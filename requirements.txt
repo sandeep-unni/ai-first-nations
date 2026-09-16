@@ -11,3 +11,4 @@ tifffile
 torch
 torchvision
 tqdm
+psycopg[binary]

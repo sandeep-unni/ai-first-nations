@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}Mangrove Survey Dashboard{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='dashboard/styles.css') }}">
+</head>
+<body>
+<div class="app-shell">
+    <aside class="sidebar">
+        <a class="brand" href="{{ url_for('dashboard') }}" aria-label="AI First Nations — Dashboard">
+            <span class="brand-artwork">
+                <img class="brand-logo" src="{{ url_for('static', filename='dashboard/images/ai-first-nations-logo.png') }}"
+                     alt="" width="1500" height="2130">
+            </span>
+            <span class="brand-name">AI First Nations</span>
+        </a>
+
+        <nav class="nav-list">
+            <a class="nav-link {% if active == 'dashboard' %}active{% endif %}" href="{{ url_for('dashboard') }}"><span>⌂</span><div><strong>Dashboard</strong><small>Overview</small></div></a>
+            <a class="nav-link {% if active == 'sites' %}active{% endif %}" href="{{ url_for('sites') }}"><span>⌖</span><div><strong>Sites</strong><small>Monitoring locations</small></div></a>
+            <a class="nav-link {% if active == 'surveys' %}active{% endif %}" href="{{ url_for('surveys') }}"><span>▣</span><div><strong>Surveys</strong><small>Upload and history</small></div></a>
+            <a class="nav-link {% if active == 'results' %}active{% endif %}" href="{{ url_for('results') }}"><span>▥</span><div><strong>Results</strong><small>Analysis outputs</small></div></a>
+            <a class="nav-link {% if active == 'compare' %}active{% endif %}" href="{{ url_for('compare') }}"><span>↗</span><div><strong>Compare Over Time</strong><small>Site history</small></div></a>
+        </nav>
+
+        <a class="create-link" href="{{ url_for('survey_step_1') }}">+ Create Survey</a>
+    </aside>
+
+    <main class="main-panel">
+        <header class="topbar">
+            <div>
+                <h1>{% block page_title %}Mangrove Survey Dashboard{% endblock %}</h1>
+                <p>{% block page_subtitle %}Monitor mangrove sites and track survey results over time.{% endblock %}</p>
+            </div>
+        </header>
+
+        <section class="content">
+            {% if demo_mode %}
+                <div class="demo-banner">Demo mode — data is temporary. Set <code>AIFN_DEMO_MODE=false</code> and <code>DATABASE_URL</code> to use PostgreSQL.</div>
+            {% endif %}
+
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% for category, message in messages %}
+                    <div class="flash {{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endwith %}
+
+            {% block body %}{% endblock %}
+        </section>
+    </main>
+</div>
+<script src="{{ url_for('static', filename='dashboard/app.js') }}"></script>
+</body>
+</html>

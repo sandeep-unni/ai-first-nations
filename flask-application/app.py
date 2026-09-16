@@ -1,8 +1,7 @@
 from flask import Flask, request, render_template, flash, redirect, url_for, send_from_directory
 import os
 from werkzeug.utils import secure_filename
-from ml_model import load_or_train_model, predict_mangrove, predict_combined
-from binary_detector import load_binary_model
+from dashboard import install_dashboard
 
 ALLOWED_EXTENSIONS = ['png', 'jpg', 'jpeg']
 
@@ -25,6 +24,8 @@ def initialize_models():
 
     # Load multi-class model
     try:
+        from ml_model import load_or_train_model
+
         model, mangrove_type, gpu = load_or_train_model()
         print("Multi-class ML model ready.")
     except Exception as e:
@@ -35,6 +36,8 @@ def initialize_models():
 
     # Load binary mangrove detector
     try:
+        from binary_detector import load_binary_model
+
         binary_model = load_binary_model()
         print("Binary mangrove detector ready.")
     except Exception as e:
@@ -51,7 +54,16 @@ if os.environ.get("WERKZEUG_RUN_MAIN") == "true" or not app.debug:
     initialize_models()
 
 
-@app.route('/', methods=['GET', 'POST'])
+install_dashboard(app)
+
+
+@app.route('/')
+def index():
+    return redirect(url_for('dashboard'))
+
+
+@app.route('/', methods=['POST'])
+@app.route('/upload', methods=['GET', 'POST'])
 def upload():
     if request.method == 'POST':
         if 'orthomosaic' not in request.files:
@@ -96,12 +108,16 @@ def analyze(name):
 
     if model is not None and binary_model is not None:
         try:
+            from ml_model import predict_combined
+
             analysis_result = predict_combined(filepath, binary_model, model, mangrove_type, gpu)
         except Exception as e:
             error_message = f"Error during analysis: {str(e)}"
             print(f"Exception during analysis: {e}")
     elif model is not None:
         try:
+            from ml_model import predict_mangrove
+
             analysis_result, _, error = predict_mangrove(filepath, model, mangrove_type, gpu)
             if error:
                 error_message = error

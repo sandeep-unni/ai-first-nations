@@ -1,0 +1,48 @@
+{% extends "dashboard_ui/base.html" %}
+{% block body %}
+<div class="page-actions">
+    <div>
+        <h2>Dashboard</h2>
+        <p>Simple overview of sites, surveys and recent analysis.</p>
+    </div>
+    <a class="btn primary" href="{{ url_for('survey_step_1') }}">Create Survey</a>
+</div>
+
+<div class="stat-grid">
+    <article class="stat-card"><span class="stat-icon">⌖</span><div><small>Total Sites</small><strong>{{ summary.total_sites }}</strong><p>Monitoring locations</p></div></article>
+    <article class="stat-card"><span class="stat-icon">▣</span><div><small>Total Surveys</small><strong>{{ summary.total_surveys }}</strong><p>All survey records</p></div></article>
+    <article class="stat-card"><span class="stat-icon">↗</span><div><small>This Month</small><strong>{{ summary.surveys_this_month }}</strong><p>New surveys</p></div></article>
+    <article class="stat-card"><span class="stat-icon">✓</span><div><small>Completed</small><strong>{{ summary.completed_surveys }}</strong><p>Saved surveys</p></div></article>
+</div>
+
+<div class="two-column">
+    <section class="card">
+        <div class="card-head"><h3>Recent Surveys</h3><a href="{{ url_for('surveys') }}">View all</a></div>
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th>Survey</th><th>Site</th><th>Date</th><th>Status</th></tr></thead>
+                <tbody>
+                {% for survey in recent_surveys %}
+                    <tr>
+                        <td><a href="{{ url_for('survey_detail', survey_id=survey.survey_id) }}">{{ survey.survey_name }}</a></td>
+                        <td>{{ survey.site_name }}</td>
+                        <td>{{ survey.survey_date }}</td>
+                        <td><span class="status">{{ survey.status }}</span></td>
+                    </tr>
+                {% else %}<tr><td colspan="4" class="empty">No surveys yet.</td></tr>{% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="card">
+        <div class="card-head"><h3>Species Results</h3><span class="muted">completed analyses</span></div>
+        <div class="species-summary">
+            {% for label, count in summary.species_counts.items() %}
+                <div class="species-row"><span class="species-dot {{ label|lower }}"></span><strong>{{ label|title }}</strong><span>{{ count }}</span></div>
+            {% else %}<p class="empty">No species results yet.</p>{% endfor %}
+        </div>
+        <div class="info-box">MVP flow: select site → upload survey image → review analysis → save result → compare surveys over time.</div>
+    </section>
+</div>
+{% endblock %}
