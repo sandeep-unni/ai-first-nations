@@ -11,7 +11,7 @@ load_dotenv()
 
 DATABASE_URL = os.environ.get(
     "DATABASE_URL",
-    "postgresql://aifn:aifn_dev_password@localhost:5432/aifn_mangrove"
+    "postgresql://aifn:aifn_dev_password@localhost:5433/aifn_mangrove"
 )
 
 engine = create_engine(DATABASE_URL)
