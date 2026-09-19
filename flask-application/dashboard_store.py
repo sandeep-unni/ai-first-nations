@@ -51,7 +51,7 @@ class PostgresStore:
             surveys_this_month = cur.fetchone()['count']
             cur.execute("select count(*) as count from survey where status = 'completed'")
             completed_surveys = cur.fetchone()['count']
-            cur.execute("select predicted_class, count(*) as count from analysisresult where analysis_type = 'species_classification' and status = 'completed' group by predicted_class")
+            cur.execute("select predicted_class, count(*) as count from analysis_result where analysis_type = 'species_classification' and status = 'completed' group by predicted_class")
             species_counts = {row['predicted_class']: row['count'] for row in cur.fetchall() if row['predicted_class']}
         return {'total_sites': total_sites, 'total_surveys': total_surveys, 'surveys_this_month': surveys_this_month, 'completed_surveys': completed_surveys, 'species_counts': species_counts}
 
@@ -61,7 +61,7 @@ class PostgresStore:
         limit_sql = ' limit %s' if limit else ''
         if limit:
             params.append(limit)
-        query = f"\n            select v.survey_id, v.site_id, s.site_name, v.survey_name, v.survey_date,\n                   v.survey_type, v.notes, v.status,\n                   i.filename, i.file_path,\n                   b.predicted_class as binary_class,\n                   b.confidence as binary_confidence,\n                   sp.predicted_class as predicted_species,\n                   sp.confidence as species_confidence\n            from survey v\n            join site s on s.site_id = v.site_id\n            left join lateral (\n                select * from image ix where ix.survey_id = v.survey_id order by ix.uploaded_at desc limit 1\n            ) i on true\n            left join lateral (\n                select * from analysisresult ar\n                where ar.image_id = i.image_id and ar.analysis_type = 'binary_detection'\n                order by ar.processed_at desc nulls last, ar.analysis_id desc limit 1\n            ) b on true\n            left join lateral (\n                select * from analysisresult ar\n                where ar.image_id = i.image_id and ar.analysis_type = 'species_classification'\n                order by ar.processed_at desc nulls last, ar.analysis_id desc limit 1\n            ) sp on true\n            {where}\n            order by v.survey_date desc, v.survey_id desc\n            {limit_sql}\n        "
+        query = f"\n            select v.survey_id, v.site_id, s.site_name, v.survey_name, v.survey_date,\n                   v.survey_type, v.notes, v.status,\n                   i.filename, i.file_path,\n                   b.predicted_class as binary_class,\n                   b.confidence as binary_confidence,\n                   sp.predicted_class as predicted_species,\n                   sp.confidence as species_confidence\n            from survey v\n            join site s on s.site_id = v.site_id\n            left join lateral (\n                select * from image ix where ix.survey_id = v.survey_id order by ix.uploaded_at desc limit 1\n            ) i on true\n            left join lateral (\n                select * from analysis_result ar\n                where ar.image_id = i.image_id and ar.analysis_type = 'binary_detection'\n                order by ar.processed_at desc nulls last, ar.analysis_id desc limit 1\n            ) b on true\n            left join lateral (\n                select * from analysis_result ar\n                where ar.image_id = i.image_id and ar.analysis_type = 'species_classification'\n                order by ar.processed_at desc nulls last, ar.analysis_id desc limit 1\n            ) sp on true\n            {where}\n            order by v.survey_date desc, v.survey_id desc\n            {limit_sql}\n        "
         with self._connect() as conn, conn.cursor() as cur:
             cur.execute(query, params)
             rows = [dict(row) for row in cur.fetchall()]
@@ -71,7 +71,7 @@ class PostgresStore:
         return rows
 
     def _probabilities_for_survey(self, survey_id):
-        query = "\n            select cp.class_label, cp.probability\n            from classprobability cp\n            join analysisresult ar on ar.analysis_id = cp.analysis_id\n            join image i on i.image_id = ar.image_id\n            where i.survey_id = %s and ar.analysis_type = 'species_classification'\n            order by cp.class_label\n        "
+        query = "\n            select cp.class_label, cp.probability\n            from class_probability cp\n            join analysis_result ar on ar.analysis_id = cp.analysis_id\n            join image i on i.image_id = ar.image_id\n            where i.survey_id = %s and ar.analysis_type = 'species_classification'\n            order by cp.class_label\n        "
         with self._connect() as conn, conn.cursor() as cur:
             cur.execute(query, (survey_id,))
             return {row['class_label']: float(row['probability']) for row in cur.fetchall()}
