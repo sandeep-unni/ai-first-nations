@@ -155,7 +155,7 @@ CREATE TABLE analysis_result (
     confidence               NUMERIC(5,4) CHECK (confidence BETWEEN 0 AND 1),
     status                   VARCHAR(50) NOT NULL DEFAULT 'pending',
     processed_at             TIMESTAMP,
-    error_message            TEXT
+    error_message            TEXT,
 
     CONSTRAINT analysis_result_type_check CHECK (
         analysis_type IN (
