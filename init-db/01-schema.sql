@@ -176,12 +176,28 @@ CREATE TABLE class_probability (
 CREATE TABLE report (
     report_id       SERIAL PRIMARY KEY,
     survey_id        INTEGER NOT NULL REFERENCES survey(survey_id),
-    report_title      VARCHAR(255),
-    report_type       VARCHAR(100),
-    file_path         VARCHAR(500) NOT NULL,
-    generated_at       TIMESTAMP NOT NULL DEFAULT now(),
-    generated_by       VARCHAR(255),
-    summary_notes      TEXT
+    report_title          VARCHAR(255),
+    report_type           VARCHAR(100),
+
+    filename              VARCHAR(255) NOT NULL,
+    file_size_bytes       BIGINT,
+    -- SHA-256 fingerprint used to verify file integrity
+    checksum_sha256       VARCHAR(64),
+
+    storage_provider      VARCHAR(50) NOT NULL,
+    storage_container_id  VARCHAR(255) NOT NULL,
+    storage_item_id       VARCHAR(500) NOT NULL,
+    storage_url           TEXT,
+
+    generated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    generated_by          VARCHAR(255),
+    summary_notes         TEXT,
+
+    CONSTRAINT report_storage_unique UNIQUE (
+        storage_provider,
+        storage_container_id,
+        storage_item_id
+    )
 );
 
 -- ---------------------------------------------------------------------

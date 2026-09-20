@@ -143,7 +143,7 @@ class Image(Base):
             "capture_sequence",
             name="image_capture_sequence_unique",
         ),
-        
+
         UniqueConstraint(
             "storage_provider",
             "storage_container_id",
@@ -216,9 +216,27 @@ class Report(Base):
     survey_id = Column(Integer, ForeignKey("survey.survey_id"), nullable=False)
     report_title = Column(String(255))
     report_type = Column(String(100))
-    file_path = Column(String(500), nullable=False)
-    generated_at = Column(DateTime, server_default=func.now())
+    filename = Column(String(255), nullable=False)
+    file_size_bytes = Column(BigInteger)
+
+    # SHA-256 fingerprint used to verify file integrity
+    checksum_sha256 = Column(String(64))
+
+    storage_provider = Column(String(50), nullable=False)
+    storage_container_id = Column(String(255), nullable=False)
+    storage_item_id = Column(String(500), nullable=False)
+    storage_url = Column(Text)
+    generated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(),)
     generated_by = Column(String(255))
     summary_notes = Column(Text)
 
     survey = relationship("Survey", back_populates="reports")
+
+    __table_args__ = (
+        UniqueConstraint(
+            "storage_provider",
+            "storage_container_id",
+            "storage_item_id",
+            name="report_storage_unique",
+        ),
+    )
