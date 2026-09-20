@@ -1,6 +1,4 @@
 -- AIFN Mangrove Survey Platform — PostgreSQL Schema
--- Matches the finalized ERD (Site, Survey, DatasetSource, Image, Model,
--- Species, AnalysisResult, ClassProbability, Report)
 
 -- ---------------------------------------------------------------------
 -- SITE
@@ -31,29 +29,13 @@ CREATE TABLE survey (
     status        VARCHAR(50) NOT NULL DEFAULT 'pending'
 );
 
--- ---------------------------------------------------------------------
--- DATASET_SOURCE  (provenance for external/placeholder imagery)
--- ---------------------------------------------------------------------
-CREATE TABLE dataset_source (
-    dataset_source_id  SERIAL PRIMARY KEY,
-    dataset_name       VARCHAR(255) NOT NULL,
-    provider           VARCHAR(255),
-    source_type        VARCHAR(100),
-    source_url         VARCHAR(500),
-    licence             VARCHAR(255),
-    geographic_origin  VARCHAR(255),
-    description        TEXT,
-    access_date        DATE,
-    notes              TEXT
-);
 
 -- ---------------------------------------------------------------------
--- IMAGE  (belongs to a Survey OR a DatasetSource, not necessarily both)
+-- IMAGE  (belongs to a Survey)
 -- ---------------------------------------------------------------------
 CREATE TABLE image (
     image_id            SERIAL PRIMARY KEY,
-    survey_id           INTEGER REFERENCES survey(survey_id),
-    dataset_source_id   INTEGER REFERENCES dataset_source(dataset_source_id),
+    survey_id           INTEGER NOT NULL REFERENCES survey(survey_id),
     filename             VARCHAR(255) NOT NULL,
     file_path            VARCHAR(500) NOT NULL,
     file_type            VARCHAR(50),
@@ -64,12 +46,7 @@ CREATE TABLE image (
     capture_date         TIMESTAMP,
     latitude             NUMERIC(9,6),
     longitude            NUMERIC(9,6),
-    uploaded_at           TIMESTAMP NOT NULL DEFAULT now(),
-    notes                TEXT,
-    -- an image should trace back to at least one source
-    CONSTRAINT image_has_a_source CHECK (
-        survey_id IS NOT NULL OR dataset_source_id IS NOT NULL
-    )
+    uploaded_at           TIMESTAMP NOT NULL DEFAULT now()
 );
 
 -- ---------------------------------------------------------------------
@@ -144,7 +121,6 @@ CREATE TABLE report (
 -- ---------------------------------------------------------------------
 CREATE INDEX idx_survey_site_id ON survey(site_id);
 CREATE INDEX idx_image_survey_id ON image(survey_id);
-CREATE INDEX idx_image_dataset_source_id ON image(dataset_source_id);
 CREATE INDEX idx_analysis_image_id ON analysis_result(image_id);
 CREATE INDEX idx_class_probability_analysis_id ON class_probability(analysis_id);
 CREATE INDEX idx_report_survey_id ON report(survey_id);

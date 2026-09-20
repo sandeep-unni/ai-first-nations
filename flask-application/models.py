@@ -1,13 +1,13 @@
 """
 models.py — SQLAlchemy models matching the finalized ERD:
-Site, Survey, DatasetSource, Image, Model, Species,
+Site, Survey, Image, Model, Species,
 AnalysisResult, ClassProbability, Report.
 
 These mirror schema.sql exactly — if you change one, change the other.
 """
 from sqlalchemy import (
     Column, Integer, String, Text, Numeric, Date, DateTime,
-    ForeignKey, CheckConstraint
+    ForeignKey
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -47,29 +47,11 @@ class Survey(Base):
     reports = relationship("Report", back_populates="survey")
 
 
-class DatasetSource(Base):
-    __tablename__ = "dataset_source"
-
-    dataset_source_id = Column(Integer, primary_key=True)
-    dataset_name = Column(String(255), nullable=False)
-    provider = Column(String(255))
-    source_type = Column(String(100))
-    source_url = Column(String(500))
-    licence = Column(String(255))
-    geographic_origin = Column(String(255))
-    description = Column(Text)
-    access_date = Column(Date)
-    notes = Column(Text)
-
-    images = relationship("Image", back_populates="dataset_source")
-
-
 class Image(Base):
     __tablename__ = "image"
 
     image_id = Column(Integer, primary_key=True)
-    survey_id = Column(Integer, ForeignKey("survey.survey_id"))
-    dataset_source_id = Column(Integer, ForeignKey("dataset_source.dataset_source_id"))
+    survey_id = Column(Integer, ForeignKey("survey.survey_id"), nullable=False)
     filename = Column(String(255), nullable=False)
     file_path = Column(String(500), nullable=False)
     file_type = Column(String(50))
@@ -81,17 +63,8 @@ class Image(Base):
     latitude = Column(Numeric(9, 6))
     longitude = Column(Numeric(9, 6))
     uploaded_at = Column(DateTime, server_default=func.now())
-    notes = Column(Text)
-
-    __table_args__ = (
-        CheckConstraint(
-            "survey_id IS NOT NULL OR dataset_source_id IS NOT NULL",
-            name="image_has_a_source",
-        ),
-    )
 
     survey = relationship("Survey", back_populates="images")
-    dataset_source = relationship("DatasetSource", back_populates="images")
     analysis_results = relationship("AnalysisResult", back_populates="image")
 
 
