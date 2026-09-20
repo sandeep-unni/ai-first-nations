@@ -5,6 +5,7 @@
 -- ---------------------------------------------------------------------
 CREATE TABLE site (
     site_id       SERIAL PRIMARY KEY,
+    site_code     VARCHAR(50) NOT NULL UNIQUE,
     site_name     VARCHAR(255) NOT NULL,
     latitude      NUMERIC(9,6),
     longitude     NUMERIC(9,6),
@@ -20,6 +21,7 @@ CREATE TABLE site (
 -- ---------------------------------------------------------------------
 CREATE TABLE survey (
     survey_id     SERIAL PRIMARY KEY,
+    survey_code   VARCHAR(50) NOT NULL UNIQUE,
     site_id       INTEGER NOT NULL REFERENCES site(site_id),
     survey_name   VARCHAR(255),
     survey_date   DATE NOT NULL,

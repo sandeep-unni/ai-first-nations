@@ -17,6 +17,7 @@ class Site(Base):
     __tablename__ = "site"
 
     site_id = Column(Integer, primary_key=True)
+    site_code = Column(String(50), nullable=False, unique=True)
     site_name = Column(String(255), nullable=False)
     latitude = Column(Numeric(9, 6))
     longitude = Column(Numeric(9, 6))
@@ -33,6 +34,7 @@ class Survey(Base):
     __tablename__ = "survey"
 
     survey_id = Column(Integer, primary_key=True)
+    survey_code = Column(String(50), nullable=False, unique=True)
     site_id = Column(Integer, ForeignKey("site.site_id"), nullable=False)
     survey_name = Column(String(255))
     survey_date = Column(Date, nullable=False)
