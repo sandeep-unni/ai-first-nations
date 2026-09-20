@@ -75,8 +75,14 @@ CREATE TABLE image (
     image_id            SERIAL PRIMARY KEY,
     survey_id           INTEGER NOT NULL REFERENCES survey(survey_id),
     filename             VARCHAR(255) NOT NULL,
-    file_path            VARCHAR(500) NOT NULL,
     file_type            VARCHAR(50),
+    file_size_bytes        BIGINT,
+
+    storage_provider       VARCHAR(50) NOT NULL,
+    storage_container_id   VARCHAR(255) NOT NULL,
+    storage_item_id        VARCHAR(500) NOT NULL,
+    storage_url            TEXT,
+
     width                INTEGER,
     height               INTEGER,
     band_count           INTEGER,
@@ -84,9 +90,14 @@ CREATE TABLE image (
     capture_date         TIMESTAMP,
     latitude             NUMERIC(9,6),
     longitude            NUMERIC(9,6),
-    uploaded_at           TIMESTAMP NOT NULL DEFAULT now()
-);
+    uploaded_at TIMESTAMP NOT NULL DEFAULT now(),
 
+    CONSTRAINT image_storage_unique UNIQUE (
+        storage_provider,
+        storage_container_id,
+        storage_item_id
+    )
+);
 -- ---------------------------------------------------------------------
 -- MODEL  (registered ML model / version)
 -- ---------------------------------------------------------------------

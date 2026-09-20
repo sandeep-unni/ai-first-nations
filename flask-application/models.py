@@ -65,16 +65,9 @@ class SurveyFile(Base):
     storage_item_id = Column(String(500), nullable=False)
     storage_url = Column(Text)
 
-    uploaded_at = Column(
-        DateTime(timezone=True),
-        nullable=False,
-        server_default=func.now(),
-    )
+    uploaded_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(),)
 
-    survey = relationship(
-        "Survey",
-        back_populates="survey_files",
-    )
+    survey = relationship("Survey", back_populates="survey_files",)
 
     __table_args__ = (
         CheckConstraint(
@@ -100,9 +93,16 @@ class Image(Base):
 
     image_id = Column(Integer, primary_key=True)
     survey_id = Column(Integer, ForeignKey("survey.survey_id"), nullable=False)
+
     filename = Column(String(255), nullable=False)
-    file_path = Column(String(500), nullable=False)
     file_type = Column(String(50))
+    file_size_bytes = Column(BigInteger)
+
+    storage_provider = Column(String(50), nullable=False)
+    storage_container_id = Column(String(255), nullable=False)
+    storage_item_id = Column(String(500), nullable=False)
+    storage_url = Column(Text)
+
     width = Column(Integer)
     height = Column(Integer)
     band_count = Column(Integer)
@@ -110,10 +110,19 @@ class Image(Base):
     capture_date = Column(DateTime)
     latitude = Column(Numeric(9, 6))
     longitude = Column(Numeric(9, 6))
-    uploaded_at = Column(DateTime, server_default=func.now())
+    uploaded_at = Column(DateTime, nullable=False, server_default=func.now())
 
     survey = relationship("Survey", back_populates="images")
     analysis_results = relationship("AnalysisResult", back_populates="image")
+
+    __table_args__ = (
+        UniqueConstraint(
+            "storage_provider",
+            "storage_container_id",
+            "storage_item_id",
+            name="image_storage_unique",
+        ),
+    )
 
 
 class Model(Base):
