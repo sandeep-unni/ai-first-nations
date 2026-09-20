@@ -1,13 +1,11 @@
 """
-models.py — SQLAlchemy models matching the finalized ERD:
-Site, Survey, Image, Model, Species,
-AnalysisResult, ClassProbability, Report.
+models.py — SQLAlchemy models
 
 These mirror schema.sql exactly — if you change one, change the other.
 """
 from sqlalchemy import (
     Column, Integer, String, Text, Numeric, Date, DateTime,
-    ForeignKey
+    ForeignKey, BigInteger, CheckConstraint, UniqueConstraint
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -45,6 +43,56 @@ class Survey(Base):
     site = relationship("Site", back_populates="surveys")
     images = relationship("Image", back_populates="survey")
     reports = relationship("Report", back_populates="survey")
+    survey_files = relationship("SurveyFile", back_populates="survey")
+
+
+class SurveyFile(Base):
+    __tablename__ = "survey_file"
+
+    survey_file_id = Column(Integer, primary_key=True)
+
+    survey_id = Column(Integer, ForeignKey("survey.survey_id"), nullable=False)
+
+    file_type = Column(String(10), nullable=False)
+    filename = Column(String(255), nullable=False)
+    file_size_bytes = Column(BigInteger)
+    format_version = Column(String(50))
+    # SHA-256 fingerprint used to verify file integrity and detect duplicates
+    checksum_sha256 = Column(String(64))
+
+    storage_provider = Column(String(50), nullable=False)
+    storage_container_id = Column(String(255), nullable=False)
+    storage_item_id = Column(String(500), nullable=False)
+    storage_url = Column(Text)
+
+    uploaded_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+    survey = relationship(
+        "Survey",
+        back_populates="survey_files",
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "file_type IN ('MRK', 'NAV', 'OBS', 'RTK')",
+            name="survey_file_type_check",
+        ),
+        UniqueConstraint(
+            "survey_id",
+            "file_type",
+            name="survey_file_type_unique",
+        ),
+        UniqueConstraint(
+            "storage_provider",
+            "storage_container_id",
+            "storage_item_id",
+            name="survey_file_storage_unique",
+        ),
+    )
 
 
 class Image(Base):

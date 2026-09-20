@@ -29,6 +29,44 @@ CREATE TABLE survey (
     status        VARCHAR(50) NOT NULL DEFAULT 'pending'
 );
 
+-- ---------------------------------------------------------------------
+-- SURVEY_FILE
+-- Mission-level supporting files such as MRK, NAV, OBS and RTK.
+-- Files remain in external storage; PostgreSQL stores their references.
+-- ---------------------------------------------------------------------
+CREATE TABLE survey_file (
+    survey_file_id       SERIAL PRIMARY KEY,
+    survey_id            INTEGER NOT NULL REFERENCES survey(survey_id),
+
+    file_type            VARCHAR(10) NOT NULL,
+    filename             VARCHAR(255) NOT NULL,
+    file_size_bytes      BIGINT,
+    format_version       VARCHAR(50),
+    -- SHA-256 fingerprint used to verify file integrity and detect duplicates
+    checksum_sha256      VARCHAR(64), 
+
+    storage_provider     VARCHAR(50) NOT NULL,
+    storage_container_id VARCHAR(255) NOT NULL,
+    storage_item_id      VARCHAR(500) NOT NULL,
+    storage_url          TEXT,
+
+    uploaded_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+    CONSTRAINT survey_file_type_check CHECK (
+        file_type IN ('MRK', 'NAV', 'OBS', 'RTK')
+    ),
+
+    CONSTRAINT survey_file_type_unique UNIQUE (
+        survey_id,
+        file_type
+    ),
+
+    CONSTRAINT survey_file_storage_unique UNIQUE (
+        storage_provider,
+        storage_container_id,
+        storage_item_id
+    )
+);
 
 -- ---------------------------------------------------------------------
 -- IMAGE  (belongs to a Survey)
