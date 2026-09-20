@@ -184,7 +184,7 @@ class AnalysisResult(Base):
     image_id = Column(Integer, ForeignKey("image.image_id"), nullable=False)
     model_id = Column(Integer, ForeignKey("model.model_id"), nullable=False)
     predicted_species_id = Column(Integer, ForeignKey("species.species_id"))
-    analysis_type = Column(String(50), nullable=False)  # 'binary' | 'multiclass'
+    analysis_type = Column(String(50), nullable=False)  
     predicted_class = Column(String(100))
     confidence = Column(Numeric(5, 4))
     status = Column(String(50), nullable=False, default="pending")
@@ -194,6 +194,14 @@ class AnalysisResult(Base):
     image = relationship("Image", back_populates="analysis_results")
     model = relationship("Model", back_populates="analysis_results")
     class_probabilities = relationship("ClassProbability", back_populates="analysis_result")
+
+    __table_args__ = (
+        CheckConstraint(
+            "analysis_type IN "
+            "('binary_detection', 'species_classification')",
+            name="analysis_result_type_check",
+        ),
+    )
 
 
 class ClassProbability(Base):

@@ -150,12 +150,19 @@ CREATE TABLE analysis_result (
     image_id               INTEGER NOT NULL REFERENCES image(image_id),
     model_id                INTEGER NOT NULL REFERENCES model(model_id),
     predicted_species_id    INTEGER REFERENCES species(species_id),
-    analysis_type           VARCHAR(50) NOT NULL,   -- e.g. 'binary' | 'multiclass'
+    analysis_type           VARCHAR(50) NOT NULL, 
     predicted_class         VARCHAR(100),
     confidence               NUMERIC(5,4) CHECK (confidence BETWEEN 0 AND 1),
     status                   VARCHAR(50) NOT NULL DEFAULT 'pending',
     processed_at             TIMESTAMP,
     error_message            TEXT
+
+    CONSTRAINT analysis_result_type_check CHECK (
+        analysis_type IN (
+            'binary_detection',
+            'species_classification'
+        )
+    )
 );
 
 -- ---------------------------------------------------------------------
@@ -204,6 +211,7 @@ CREATE TABLE report (
 -- Helpful indexes for common lookups
 -- ---------------------------------------------------------------------
 CREATE INDEX idx_survey_site_id ON survey(site_id);
+CREATE INDEX idx_survey_file_survey_id ON survey_file(survey_id);
 CREATE INDEX idx_image_survey_id ON image(survey_id);
 CREATE INDEX idx_analysis_image_id ON analysis_result(image_id);
 CREATE INDEX idx_class_probability_analysis_id ON class_probability(analysis_id);
