@@ -5,11 +5,12 @@ These mirror schema.sql exactly — if you change one, change the other.
 """
 from sqlalchemy import (
     Column, Integer, String, Text, Numeric, Date, DateTime,
-    ForeignKey, BigInteger, CheckConstraint, UniqueConstraint
+    ForeignKey, BigInteger, CheckConstraint, UniqueConstraint, text
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from database import Base
+from sqlalchemy.dialects.postgresql import JSONB
 
 
 class Site(Base):
@@ -107,15 +108,42 @@ class Image(Base):
     height = Column(Integer)
     band_count = Column(Integer)
     band_configuration = Column(String(100))
-    capture_date = Column(DateTime)
-    latitude = Column(Numeric(9, 6))
-    longitude = Column(Numeric(9, 6))
-    uploaded_at = Column(DateTime, nullable=False, server_default=func.now())
+    capture_sequence = Column(Integer)
+    capture_date = Column(DateTime(timezone=True))
+
+    latitude = Column(Numeric(12, 9))
+    longitude = Column(Numeric(12, 9))
+    absolute_altitude = Column(Numeric(10, 3))
+    relative_altitude = Column(Numeric(10, 3))
+
+    positioning_status = Column(String(20))
+    rtk_std_latitude = Column(Numeric(10, 6))
+    rtk_std_longitude = Column(Numeric(10, 6))
+    rtk_std_height = Column(Numeric(10, 6))
+
+    camera_model = Column(String(100))
+    source_metadata = Column(
+        JSONB,
+        nullable=False,
+        server_default=text("'{}'::jsonb"),
+    )
+
+    uploaded_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
 
     survey = relationship("Survey", back_populates="images")
     analysis_results = relationship("AnalysisResult", back_populates="image")
 
     __table_args__ = (
+        UniqueConstraint(
+            "survey_id",
+            "capture_sequence",
+            name="image_capture_sequence_unique",
+        ),
+        
         UniqueConstraint(
             "storage_provider",
             "storage_container_id",

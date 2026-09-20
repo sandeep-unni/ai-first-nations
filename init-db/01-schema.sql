@@ -72,25 +72,43 @@ CREATE TABLE survey_file (
 -- IMAGE  (belongs to a Survey)
 -- ---------------------------------------------------------------------
 CREATE TABLE image (
-    image_id            SERIAL PRIMARY KEY,
-    survey_id           INTEGER NOT NULL REFERENCES survey(survey_id),
+    image_id             SERIAL PRIMARY KEY,
+    survey_id            INTEGER NOT NULL REFERENCES survey(survey_id),
     filename             VARCHAR(255) NOT NULL,
     file_type            VARCHAR(50),
-    file_size_bytes        BIGINT,
+    file_size_bytes      BIGINT,
 
     storage_provider       VARCHAR(50) NOT NULL,
     storage_container_id   VARCHAR(255) NOT NULL,
     storage_item_id        VARCHAR(500) NOT NULL,
     storage_url            TEXT,
 
-    width                INTEGER,
-    height               INTEGER,
-    band_count           INTEGER,
-    band_configuration   VARCHAR(100),
-    capture_date         TIMESTAMP,
-    latitude             NUMERIC(9,6),
-    longitude            NUMERIC(9,6),
-    uploaded_at TIMESTAMP NOT NULL DEFAULT now(),
+    width                  INTEGER,
+    height                 INTEGER,
+    band_count             INTEGER,
+    band_configuration     VARCHAR(100),
+    capture_sequence       INTEGER,
+    capture_date           TIMESTAMPTZ,
+
+    latitude               NUMERIC(12,9),
+    longitude              NUMERIC(12,9),
+    absolute_altitude      NUMERIC(10,3),
+    relative_altitude      NUMERIC(10,3),
+
+    positioning_status     VARCHAR(20),
+    rtk_std_latitude       NUMERIC(10,6),
+    rtk_std_longitude      NUMERIC(10,6),
+    rtk_std_height         NUMERIC(10,6),
+
+    camera_model           VARCHAR(100),
+    source_metadata        JSONB NOT NULL DEFAULT '{}'::jsonb,
+
+    uploaded_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+    CONSTRAINT image_capture_sequence_unique UNIQUE (
+        survey_id,
+        capture_sequence
+    ),
 
     CONSTRAINT image_storage_unique UNIQUE (
         storage_provider,
@@ -98,6 +116,7 @@ CREATE TABLE image (
         storage_item_id
     )
 );
+
 -- ---------------------------------------------------------------------
 -- MODEL  (registered ML model / version)
 -- ---------------------------------------------------------------------
