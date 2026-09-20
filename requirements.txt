@@ -12,3 +12,5 @@ torch
 torchvision
 tqdm
 psycopg[binary]
+SQLAlchemy
+python-dotenv
