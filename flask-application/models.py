@@ -64,8 +64,8 @@ class SurveyFile(Base):
     checksum_sha256 = Column(String(64))
 
     storage_provider = Column(String(50), nullable=False)
-    storage_container_id = Column(String(255), nullable=False)
-    storage_item_id = Column(String(500), nullable=False)
+    storage_container_id = Column(String(255))
+    storage_item_id = Column(String(500))
     storage_url = Column(Text)
 
     uploaded_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(),)
@@ -102,8 +102,8 @@ class Image(Base):
     file_size_bytes = Column(BigInteger)
 
     storage_provider = Column(String(50), nullable=False)
-    storage_container_id = Column(String(255), nullable=False)
-    storage_item_id = Column(String(500), nullable=False)
+    storage_container_id = Column(String(255))
+    storage_item_id = Column(String(500))
     storage_url = Column(Text)
 
     width = Column(Integer)

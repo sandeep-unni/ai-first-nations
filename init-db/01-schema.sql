@@ -48,8 +48,8 @@ CREATE TABLE survey_file (
     checksum_sha256      VARCHAR(64), 
 
     storage_provider     VARCHAR(50) NOT NULL,
-    storage_container_id VARCHAR(255) NOT NULL,
-    storage_item_id      VARCHAR(500) NOT NULL,
+    storage_container_id VARCHAR(255),
+    storage_item_id      VARCHAR(500),
     storage_url          TEXT,
 
     uploaded_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -81,8 +81,8 @@ CREATE TABLE image (
     file_size_bytes      BIGINT,
 
     storage_provider       VARCHAR(50) NOT NULL,
-    storage_container_id   VARCHAR(255) NOT NULL,
-    storage_item_id        VARCHAR(500) NOT NULL,
+    storage_container_id   VARCHAR(255),
+    storage_item_id        VARCHAR(500),
     storage_url            TEXT,
 
     width                  INTEGER,
