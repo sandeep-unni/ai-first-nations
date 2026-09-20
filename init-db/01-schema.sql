@@ -50,7 +50,7 @@ CREATE TABLE survey_file (
     storage_provider     VARCHAR(50) NOT NULL,
     storage_container_id VARCHAR(255),
     storage_item_id      VARCHAR(500),
-    storage_url          TEXT,
+    storage_url          TEXT NOT NULL,
 
     uploaded_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
 
@@ -83,7 +83,7 @@ CREATE TABLE image (
     storage_provider       VARCHAR(50) NOT NULL,
     storage_container_id   VARCHAR(255),
     storage_item_id        VARCHAR(500),
-    storage_url            TEXT,
+    storage_url            TEXT NOT NULL,
 
     width                  INTEGER,
     height                 INTEGER,

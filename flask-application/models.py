@@ -66,7 +66,7 @@ class SurveyFile(Base):
     storage_provider = Column(String(50), nullable=False)
     storage_container_id = Column(String(255))
     storage_item_id = Column(String(500))
-    storage_url = Column(Text)
+    storage_url = Column(Text, nullable=False)
 
     uploaded_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(),)
 
@@ -104,7 +104,7 @@ class Image(Base):
     storage_provider = Column(String(50), nullable=False)
     storage_container_id = Column(String(255))
     storage_item_id = Column(String(500))
-    storage_url = Column(Text)
+    storage_url = Column(Text, nullable=False)
 
     width = Column(Integer)
     height = Column(Integer)
