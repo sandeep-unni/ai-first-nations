@@ -17,4 +17,5 @@
 
 # local environment variables (database credentials)
 .env
+.secrets/
 .venv/

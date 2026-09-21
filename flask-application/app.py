@@ -1,7 +1,11 @@
 from flask import Flask, request, render_template, flash, redirect, url_for, send_from_directory
 import os
+from pathlib import Path
+from dotenv import load_dotenv
 from werkzeug.utils import secure_filename
 from dashboard import install_dashboard
+
+load_dotenv(Path(__file__).resolve().parent.parent / '.env')
 
 ALLOWED_EXTENSIONS = ['png', 'jpg', 'jpeg']
 
