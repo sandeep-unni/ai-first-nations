@@ -296,6 +296,35 @@ class SurveyFlowTests(unittest.TestCase):
         self.app.config.update(SITES_MAP_URL='')
         self.assertNotIn('maps.example', self.client.get(f'/sites/{site_id}').get_data(as_text=True))
 
+    def test_results_page_empty_then_summarises_analyses(self):
+        html = self.client.get('/results').get_data(as_text=True)
+        self.assertIn('No analysis results yet', html)
+        response = self.post(files=[image_file(), image_file()])
+        survey_id = int(response.location.rsplit('/', 1)[1])
+        tiles = iter([{'Non-Mangrove': 1, 'orange': 2, 'teal-ish': 1}, {'orange': 4}])
+        process_next(self.app, self.store, lambda path: dict(prediction(path), tiles=next(tiles)), MODELS)
+        html = self.client.get('/results').get_data(as_text=True)
+        self.assertIn('Mangrove colour mix', html)
+        self.assertIn('88%', html)  # 7 of 8 tiles are mangrove
+        self.assertIn('Teal-ish', html)
+        self.assertIn('conic-gradient(', html)
+        self.assertIn('Binary detection', html)
+        self.assertIn('Species classification', html)
+        self.assertIn('mean confidence 80%', html)
+        self.assertIn(f'/surveys/{survey_id}', html)
+        self.assertIn('2 / 2', html)
+
+    def test_results_page_filters_by_site_and_counts_failures(self):
+        self.post()
+        def broken(path):
+            raise RuntimeError('model unavailable')
+        process_next(self.app, self.store, broken, MODELS)
+        html = self.client.get('/results?site_id=1').get_data(as_text=True)
+        self.assertIn('1 failed', html)
+        self.assertIn('Failed 1', html)
+        other = self.client.get('/results?site_id=999').get_data(as_text=True)
+        self.assertIn('No analysis results yet', other)
+
     def test_new_survey_preselects_site_from_site_page(self):
         html = self.client.get('/surveys/new?site_id=1').get_data(as_text=True)
         self.assertRegex(html, r'<option value="1"\s+selected>')

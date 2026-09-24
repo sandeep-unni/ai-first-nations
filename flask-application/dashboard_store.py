@@ -54,6 +54,17 @@ class DemoStore:
                              latest_completed_date=done.get('survey_date'), latest_tiles=dict(tiles)))
         return rows
 
+    def analysis_results(self, site_id=None):
+        """Surveys in scope, and the latest analysis of each type for each image."""
+        surveys, analyses = [], []
+        for survey in self.list_surveys(site_id):
+            images = survey.get('images', [])
+            surveys.append(dict(survey, image_count=len(images)))
+            for image in images:
+                for result in image.get('analyses', []):
+                    analyses.append(dict(result, survey_id=survey['survey_id'], image_id=image['image_id']))
+        return surveys, analyses
+
     def survey_history(self, site_id=None):
         return [dict(row, image_count=len(row.get('images', [])))
                 for row in self.list_surveys(site_id)]
@@ -171,6 +182,31 @@ class PostgresStore:
                 from survey v join site s on s.site_id=v.site_id
                 {where} order by v.survey_date desc, v.survey_id desc
             ''', (site_id,) if site_id is not None else ()).fetchall()
+
+    def analysis_results(self, site_id=None):
+        """Surveys in scope, and the latest analysis of each type for each image."""
+        where = 'where v.site_id = %s' if site_id is not None else ''
+        params = (site_id,) if site_id is not None else ()
+        with self._connect() as conn:
+            surveys = conn.execute(f'''
+                select v.survey_id, v.survey_code, v.survey_name, v.survey_date, v.status,
+                       v.site_id, s.site_name,
+                       (select count(*) from image i where i.survey_id=v.survey_id) as image_count
+                from survey v join site s on s.site_id=v.site_id
+                {where} order by v.survey_date desc, v.survey_id desc''', params).fetchall()
+            analyses = conn.execute(f'''
+                select distinct on (a.image_id, a.analysis_type)
+                       i.survey_id, a.image_id, a.analysis_type, a.status, a.predicted_class, a.confidence,
+                       m.model_name, m.model_version,
+                       coalesce((select jsonb_object_agg(t.class_label, t.tile_count)
+                                 from tile_composition t where t.analysis_id=a.analysis_id), '{{}}'::jsonb) as tile_counts
+                from analysis_result a
+                join image i on i.image_id=a.image_id
+                join survey v on v.survey_id=i.survey_id
+                left join model m on m.model_id=a.model_id
+                {where}
+                order by a.image_id, a.analysis_type, a.analysis_id desc''', params).fetchall()
+        return surveys, analyses
 
     def get_survey(self, survey_id):
         with self._connect() as conn:

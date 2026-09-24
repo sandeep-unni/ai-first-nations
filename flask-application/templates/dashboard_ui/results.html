@@ -1,0 +1,68 @@
+{% extends "dashboard_ui/base.html" %}
+{% block title %}Results · AI First Nations{% endblock %}
+{% block page_title %}Analysis Results{% endblock %}
+{% block page_subtitle %}What the models found across your drone imagery.{% endblock %}
+{% block body %}
+{% set composition = overall.composition %}
+<form class="results-toolbar" method="get">
+    <label for="results-site">Show results for
+        <select name="site_id" id="results-site"><option value="">All sites</option>{% for site in sites %}<option value="{{ site.site_id }}" {% if site_id == site.site_id %}selected{% endif %}>{{ site.site_name }}</option>{% endfor %}</select>
+    </label>
+    <button class="btn" type="submit">Apply</button>
+    <p class="muted">{{ surveys|length }} survey{{ '' if surveys|length == 1 else 's' }} in view</p>
+</form>
+
+{% if not overall.images %}
+<section class="card results-empty"><h3>No analysis results yet</h3><p>Results appear here once a survey's images have been analysed.</p><a class="btn primary" href="{{ url_for('survey_step_1', site_id=site_id) if site_id else url_for('survey_step_1') }}">+ Create Survey</a></section>
+{% else %}
+<section class="results-strip" aria-label="Summary">
+    <div><small>Images analysed</small><strong>{{ overall.analysed }}<span> / {{ total_images }}</span></strong></div>
+    <div><small>Surveys with results</small><strong>{{ surveys_with_results }}<span> / {{ surveys|length }}</span></strong></div>
+    <div><small>Mangrove share of tiles</small><strong>{{ ('%.0f'|format(composition.mangrove_percent) ~ '%') if composition.total_tiles else '—' }}</strong></div>
+    <div><small>Images with failures</small><strong class="{{ 'results-alert' if overall.failed }}">{{ overall.failed }}</strong></div>
+</section>
+
+<div class="results-grid">
+    <section class="card">
+        <div class="card-head"><h3>Mangrove colour mix</h3><span class="muted">{{ composition.mangrove_tiles }} mangrove tiles</span></div>
+        {% if composition.mangrove_tiles %}
+        <div class="results-mix">
+            <div class="results-donut" style="{{ donut_style(composition.rows) }}" role="img" aria-label="{% for row in composition.rows %}{{ row.label }} {{ '%.0f'|format(row.percent) }}%{{ ', ' if not loop.last }}{% endfor %}">
+                <div><strong>{{ '%.0f'|format(composition.mangrove_percent) }}%</strong><span>of {{ composition.total_tiles }} tiles are mangrove</span></div>
+            </div>
+            <ul class="results-legend">{% for row in composition.rows %}<li><i class="site-dot" style="{{ class_style(row.label) }}"></i><strong>{{ row.label|capitalize }}</strong><span>{{ '%.1f'|format(row.percent) }}%</span><small class="muted">{{ row.tiles }} tiles</small></li>{% endfor %}</ul>
+        </div>
+        {% elif composition.total_tiles %}<p class="empty">No mangrove found in {{ composition.total_tiles }} tiles analysed.</p>
+        {% else %}<p class="empty">These results have no tile-level counts yet.</p>{% endif %}
+    </section>
+
+    <section class="card">
+        <div class="card-head"><h3>Model outputs</h3><span class="muted">per image</span></div>
+        {% for name, task in overall.tasks|dictsort %}
+        <div class="results-task">
+            <div class="results-task-head"><strong>{{ status_label(name) }}</strong><span class="muted">{% if task.mean_confidence is not none %}mean confidence {{ '%.0f'|format(task.mean_confidence * 100) }}%{% endif %}</span></div>
+            {% if task.rows %}<div class="site-mix-bar" role="img" aria-label="{% for row in task.rows %}{{ row.label }} {{ row.count }}{{ ', ' if not loop.last }}{% endfor %}">{% for row in task.rows %}<span style="width: {{ '%.2f'|format(row.percent) }}%; {{ class_style(row.label) }}"></span>{% endfor %}</div>
+            <p class="site-mix-legend">{% for row in task.rows %}<span><i class="site-dot" style="{{ class_style(row.label) }}"></i>{{ row.label }} {{ row.count }}</span>{% endfor %}</p>{% endif %}
+            <p class="muted">{% for status, count in task.statuses|dictsort %}{{ status_label(status) }} {{ count }}{{ ' · ' if not loop.last }}{% endfor %}</p>
+        </div>
+        {% endfor %}
+    </section>
+</div>
+
+<section class="card">
+    <div class="card-head"><h3>Results by survey</h3><span class="muted">latest first</span></div>
+    <div class="table-wrap"><table class="results-table"><thead><tr><th>Survey</th><th>Site</th><th>Date</th><th>Analysed</th><th>Colour mix</th><th>Status</th></tr></thead><tbody>
+    {% for survey in surveys %}{% set mix = survey.summary.composition %}<tr>
+        <td><a href="{{ url_for('survey_detail', survey_id=survey.survey_id) }}">{{ survey.survey_name or survey.survey_code }}</a></td>
+        <td>{{ survey.site_name }}</td>
+        <td>{{ survey.survey_date }}</td>
+        <td>{{ survey.summary.analysed }} / {{ survey.image_count }}{% if survey.summary.failed %} <span class="results-alert">· {{ survey.summary.failed }} failed</span>{% endif %}</td>
+        <td>{% if mix.mangrove_tiles %}<div class="results-mini"><div class="site-mix-bar">{% for row in mix.rows if row.tiles %}<span style="width: {{ '%.2f'|format(row.percent) }}%; {{ class_style(row.label) }}"></span>{% endfor %}</div><span>{{ '%.0f'|format(mix.mangrove_percent) }}% mangrove</span></div>{% elif mix.total_tiles %}<span class="muted">No mangrove</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td><span class="status">{{ status_label(survey.status) }}</span></td>
+    </tr>{% endfor %}
+    </tbody></table></div>
+</section>
+
+<p class="muted results-note">Colour mix counts each image tile, so shares describe imagery, not measured ground area; class names are the model's labels, not validated species.{% if overall.models %} Models: {% for name, version in overall.models %}{{ name }}{% if version %} ({{ version }}){% endif %}{{ ', ' if not loop.last }}{% endfor %}.{% endif %}</p>
+{% endif %}
+{% endblock %}

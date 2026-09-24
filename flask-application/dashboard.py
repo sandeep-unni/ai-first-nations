@@ -1,9 +1,10 @@
 """Install the dashboard without replacing the existing image-analysis workflow."""
+from collections import Counter
 from datetime import date
 import hashlib
 import os
 
-from flask import abort, render_template
+from flask import abort, render_template, request
 
 from dashboard_store import get_store
 from survey_flow import install_survey_flow
@@ -40,14 +41,31 @@ def install_dashboard(app, store=None):
                            if has_coords and app.config["SITES_MAP_URL"] else None)
         return site
 
-    def class_style(label):
+    def class_colours(label):
         """Colour a model class from its label: a CSS colour name (orange) is used
-        as-is; any other label gets a stable generated colour."""
+        as-is; any other label gets a stable generated colour. Returns the generated
+        colour and, when the label may be a colour name, the named variant."""
         hue = int(hashlib.sha256(str(label).encode()).hexdigest()[:6], 16) % 360
-        style = f"background: hsl({hue} 45% 50%);"
-        if str(label).isalpha():
-            # Browsers ignore this second declaration when the label isn't a colour.
-            style += f" background: color-mix(in srgb, {str(label).lower()} 88%, #333);"
+        named = f"color-mix(in srgb, {str(label).lower()} 88%, #333)" if str(label).isalpha() else None
+        return f"hsl({hue} 45% 50%)", named
+
+    def class_style(label):
+        generated, named = class_colours(label)
+        # Browsers ignore the second declaration when the label isn't a colour.
+        return f"background: {generated};" + (f" background: {named};" if named else "")
+
+    def donut_style(rows):
+        """conic-gradient for rows with label and percent, with the same fallback rule."""
+        def gradient(pick):
+            stops, start = [], 0.0
+            for row in rows:
+                end = start + row["percent"]
+                stops.append(f"{pick(class_colours(row['label']))} {start:.2f}% {end:.2f}%")
+                start = end
+            return f"background: conic-gradient({', '.join(stops)});"
+        style = gradient(lambda colours: colours[0])
+        if all(class_colours(row["label"])[1] for row in rows):
+            style += " " + gradient(lambda colours: colours[1])
         return style
 
     def status_label(status):
@@ -84,11 +102,59 @@ def install_dashboard(app, store=None):
             demo_mode=store.demo_mode,
         )
 
+    def summarise(analyses):
+        """Aggregate per-image analyses; every task, class and label comes from the data."""
+        from survey_processing import tile_composition
+        tasks, tiles, images, failed, models = {}, Counter(), set(), set(), set()
+        for result in analyses:
+            task = tasks.setdefault(result["analysis_type"], dict(classes=Counter(), statuses=Counter(), confidences=[]))
+            task["statuses"][result["status"]] += 1
+            images.add(result["image_id"])
+            if result["status"] == "failed":
+                failed.add(result["image_id"])
+            if result.get("predicted_class"):
+                task["classes"][result["predicted_class"]] += 1
+                if result.get("confidence") is not None:
+                    task["confidences"].append(float(result["confidence"]))
+            tiles.update({label: int(n) for label, n in (result.get("tile_counts") or {}).items()})
+            if result.get("model_name"):
+                models.add((result["model_name"], result.get("model_version")))
+        for task in tasks.values():
+            total = sum(task["classes"].values())
+            task["rows"] = [dict(label=label, count=count, percent=100 * count / total)
+                            for label, count in task["classes"].most_common()]
+            task["mean_confidence"] = (sum(task["confidences"]) / len(task["confidences"])
+                                       if task["confidences"] else None)
+        return dict(tasks=tasks, composition=tile_composition(tiles), images=len(images),
+                    analysed=len(images - failed), failed=len(failed), models=sorted(models))
+
+    @app.route("/results")
+    def results():
+        site_id = request.args.get("site_id", type=int)
+        surveys, analyses = store.analysis_results(site_id)
+        by_survey = {}
+        for result in analyses:
+            by_survey.setdefault(result["survey_id"], []).append(result)
+        rows = [dict(survey, summary=summarise(by_survey.get(survey["survey_id"], []))) for survey in surveys]
+        return render_template(
+            "dashboard_ui/results.html",
+            overall=summarise(analyses),
+            surveys=rows,
+            surveys_with_results=sum(1 for row in rows if row["summary"]["images"]),
+            total_images=sum(row["image_count"] for row in rows),
+            sites=store.list_sites(),
+            site_id=site_id,
+            class_style=class_style,
+            donut_style=donut_style,
+            status_label=status_label,
+            active="results",
+            demo_mode=store.demo_mode,
+        )
+
     def unfinished(tab, label, **kwargs):
         return render_template("dashboard_ui/unfinished.html", tab_label=label, active=tab)
 
     routes = [
-        ("/results", "results", "results", "Results"),
         ("/compare", "compare", "compare", "Compare Over Time"),
     ]
     for path, endpoint, tab, label in routes:
