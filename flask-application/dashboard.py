@@ -4,7 +4,7 @@ from datetime import date
 import hashlib
 import os
 
-from flask import abort, render_template, request
+from flask import abort, render_template, request, url_for
 
 from dashboard_store import get_store
 from survey_flow import install_survey_flow
@@ -25,9 +25,20 @@ def install_dashboard(app, store=None):
         )
 
     # Sites settings come from the environment so deployments can tune them.
-    app.config.setdefault("SITES_RECENT_DAYS", int(os.getenv("AIFN_SITES_RECENT_DAYS", "90")))
+    # A mistyped value falls back to the default instead of stopping the app.
+    try:
+        recent_days = int(os.getenv("AIFN_SITES_RECENT_DAYS", "90"))
+    except ValueError:
+        app.logger.warning("AIFN_SITES_RECENT_DAYS must be a whole number; using 90.")
+        recent_days = 90
+    app.config.setdefault("SITES_RECENT_DAYS", recent_days)
     app.config.setdefault("SITES_MAP_URL", os.getenv(
         "AIFN_SITES_MAP_URL", "https://www.openstreetmap.org/?mlat={lat}&mlon={lon}#map=14/{lat}/{lon}"))
+
+    # Formats browsers can show inline; TIFF originals are listed without a preview.
+    app.config.setdefault("RESULTS_PREVIEW_TYPES", tuple(
+        kind.strip().lstrip(".") for kind in
+        os.getenv("AIFN_RESULTS_PREVIEW_TYPES", "jpg,jpeg,png").lower().split(",") if kind.strip()))
 
     def site_view(site, today):
         """Derived values shared by the Sites list and a single site page."""
@@ -37,8 +48,13 @@ def install_dashboard(app, store=None):
         site["days_since"] = (today - date.fromisoformat(str(last))).days if last else None
         site["recent"] = site["days_since"] is not None and site["days_since"] <= app.config["SITES_RECENT_DAYS"]
         has_coords = site.get("latitude") is not None and site.get("longitude") is not None
-        site["map_url"] = (app.config["SITES_MAP_URL"].format(lat=site["latitude"], lon=site["longitude"])
-                           if has_coords and app.config["SITES_MAP_URL"] else None)
+        site["map_url"] = None
+        if has_coords and app.config["SITES_MAP_URL"]:
+            try:
+                site["map_url"] = app.config["SITES_MAP_URL"].format(lat=site["latitude"], lon=site["longitude"])
+            except (KeyError, IndexError, ValueError):
+                # A malformed template only hides the map link; the page still loads.
+                app.logger.warning("AIFN_SITES_MAP_URL must use only {lat} and {lon} placeholders.")
         return site
 
     def class_colours(label):
@@ -106,8 +122,10 @@ def install_dashboard(app, store=None):
         """Aggregate per-image analyses; every task, class and label comes from the data."""
         from survey_processing import tile_composition
         tasks, tiles, images, failed, models = {}, Counter(), set(), set(), set()
+        analysed_at = None
         for result in analyses:
-            task = tasks.setdefault(result["analysis_type"], dict(classes=Counter(), statuses=Counter(), confidences=[]))
+            task = tasks.setdefault(result["analysis_type"], dict(classes=Counter(), statuses=Counter(),
+                                                                  confidences=[], models=set()))
             task["statuses"][result["status"]] += 1
             images.add(result["image_id"])
             if result["status"] == "failed":
@@ -119,14 +137,27 @@ def install_dashboard(app, store=None):
             tiles.update({label: int(n) for label, n in (result.get("tile_counts") or {}).items()})
             if result.get("model_name"):
                 models.add((result["model_name"], result.get("model_version")))
+                task["models"].add(result.get("model_version") or result["model_name"])
+            if result.get("processed_at") and (analysed_at is None or result["processed_at"] > analysed_at):
+                analysed_at = result["processed_at"]
         for task in tasks.values():
             total = sum(task["classes"].values())
             task["rows"] = [dict(label=label, count=count, percent=100 * count / total)
                             for label, count in task["classes"].most_common()]
             task["mean_confidence"] = (sum(task["confidences"]) / len(task["confidences"])
                                        if task["confidences"] else None)
+            task["models"] = sorted(task["models"])
         return dict(tasks=tasks, composition=tile_composition(tiles), images=len(images),
-                    analysed=len(images - failed), failed=len(failed), models=sorted(models))
+                    analysed=len(images - failed), failed=len(failed), models=sorted(models),
+                    analysed_at=analysed_at)
+
+    def preview_url(image):
+        """Browser-viewable original stored by this app, if there is one."""
+        if (image and image.get("storage_provider") == "local"
+                and image.get("storage_container_id") == app.config["SURVEY_STORAGE_ID"]
+                and str(image.get("file_type", "")).lower() in app.config["RESULTS_PREVIEW_TYPES"]):
+            return url_for("survey_image", filename=image["storage_item_id"])
+        return None
 
     @app.route("/results")
     def results():
@@ -135,7 +166,8 @@ def install_dashboard(app, store=None):
         by_survey = {}
         for result in analyses:
             by_survey.setdefault(result["survey_id"], []).append(result)
-        rows = [dict(survey, summary=summarise(by_survey.get(survey["survey_id"], []))) for survey in surveys]
+        rows = [dict(survey, summary=summarise(by_survey.get(survey["survey_id"], [])),
+                     preview_url=preview_url(survey.get("preview"))) for survey in surveys]
         return render_template(
             "dashboard_ui/results.html",
             overall=summarise(analyses),

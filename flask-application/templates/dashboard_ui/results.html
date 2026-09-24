@@ -51,16 +51,37 @@
 
 <section class="card">
     <div class="card-head"><h3>Results by survey</h3><span class="muted">latest first</span></div>
-    <div class="table-wrap"><table class="results-table"><thead><tr><th>Survey</th><th>Site</th><th>Date</th><th>Analysed</th><th>Colour mix</th><th>Status</th></tr></thead><tbody>
-    {% for survey in surveys %}{% set mix = survey.summary.composition %}<tr>
-        <td><a href="{{ url_for('survey_detail', survey_id=survey.survey_id) }}">{{ survey.survey_name or survey.survey_code }}</a></td>
-        <td>{{ survey.site_name }}</td>
-        <td>{{ survey.survey_date }}</td>
-        <td>{{ survey.summary.analysed }} / {{ survey.image_count }}{% if survey.summary.failed %} <span class="results-alert">· {{ survey.summary.failed }} failed</span>{% endif %}</td>
-        <td>{% if mix.mangrove_tiles %}<div class="results-mini"><div class="site-mix-bar">{% for row in mix.rows if row.tiles %}<span style="width: {{ '%.2f'|format(row.percent) }}%; {{ class_style(row.label) }}"></span>{% endfor %}</div><span>{{ '%.0f'|format(mix.mangrove_percent) }}% mangrove</span></div>{% elif mix.total_tiles %}<span class="muted">No mangrove</span>{% else %}<span class="muted">—</span>{% endif %}</td>
-        <td><span class="status">{{ status_label(survey.status) }}</span></td>
-    </tr>{% endfor %}
-    </tbody></table></div>
+    <div class="results-list">
+    {% for survey in surveys %}{% set summary = survey.summary %}{% set mix = summary.composition %}
+    <article class="results-survey">
+        <a class="results-preview" href="{{ url_for('survey_detail', survey_id=survey.survey_id) }}" aria-label="Open {{ survey.survey_name or survey.survey_code }}">
+            {% if survey.preview_url %}<img loading="lazy" src="{{ survey.preview_url }}" alt="{{ survey.preview.filename }}"><span>Original image</span>
+            {% else %}<div>{{ ('No preview · ' ~ survey.preview.file_type|upper) if survey.preview else 'No images' }}</div>{% endif %}
+        </a>
+        <div class="results-survey-body">
+            <div class="results-survey-head">
+                <div>
+                    <h4><a href="{{ url_for('survey_detail', survey_id=survey.survey_id) }}">{{ survey.survey_name or survey.survey_code }}</a></h4>
+                    <p class="results-id">Survey ID <code>{{ survey.survey_code or survey.survey_id }}</code></p>
+                </div>
+                <span class="status">{{ status_label(survey.status) }}</span>
+            </div>
+            <p class="muted">{{ survey.site_name }} · {{ survey.survey_date }} · {{ summary.analysed }} / {{ survey.image_count }} image{{ '' if survey.image_count == 1 else 's' }} analysed{% if summary.failed %} · <span class="results-alert">{{ summary.failed }} failed</span>{% endif %}</p>
+            {% if mix.mangrove_tiles %}<div class="results-mini"><div class="site-mix-bar">{% for row in mix.rows if row.tiles %}<span style="width: {{ '%.2f'|format(row.percent) }}%; {{ class_style(row.label) }}"></span>{% endfor %}</div><span>{{ '%.0f'|format(mix.mangrove_percent) }}% mangrove tiles</span></div>
+            {% elif mix.total_tiles %}<p class="muted">No mangrove in {{ mix.total_tiles }} tiles</p>{% endif %}
+            {% if summary.tasks %}<dl class="results-outputs">
+            {% for name, task in summary.tasks|dictsort %}<div>
+                <dt>{{ status_label(name) }}</dt>
+                <dd>{% if task.rows %}<i class="site-dot" style="{{ class_style(task.rows[0].label) }}"></i>{{ task.rows[0].label }}{% if task.rows|length > 1 %} <span class="muted">(+{{ task.rows|length - 1 }} other)</span>{% endif %}{% else %}{% for status, count in task.statuses|dictsort %}{{ status_label(status) }} {{ count }}{{ ' · ' if not loop.last }}{% endfor %}{% endif %}
+                    {% if task.mean_confidence is not none %}<span class="muted"> · {{ '%.0f'|format(task.mean_confidence * 100) }}% confidence</span>{% endif %}</dd>
+                {% if task.models %}<dd class="results-model">Model {% for version in task.models %}<code title="{{ version }}">{{ version if version|length <= 20 else version[:20] ~ '…' }}</code>{{ ', ' if not loop.last }}{% endfor %}</dd>{% endif %}
+            </div>{% endfor %}
+            </dl>{% else %}<p class="muted">Not analysed yet.</p>{% endif %}
+            {% if summary.analysed_at %}<p class="results-date muted">Analysed {{ summary.analysed_at.strftime('%Y-%m-%d %H:%M') if summary.analysed_at.strftime is defined else summary.analysed_at }}</p>{% endif %}
+        </div>
+    </article>
+    {% endfor %}
+    </div>
 </section>
 
 <p class="muted results-note">Colour mix counts each image tile, so shares describe imagery, not measured ground area; class names are the model's labels, not validated species.{% if overall.models %} Models: {% for name, version in overall.models %}{{ name }}{% if version %} ({{ version }}){% endif %}{{ ', ' if not loop.last }}{% endfor %}.{% endif %}</p>

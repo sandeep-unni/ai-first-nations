@@ -312,7 +312,18 @@ class SurveyFlowTests(unittest.TestCase):
         self.assertIn('Species classification', html)
         self.assertIn('mean confidence 80%', html)
         self.assertIn(f'/surveys/{survey_id}', html)
-        self.assertIn('2 / 2', html)
+        self.assertIn('2 / 2 images analysed', html)
+        survey = self.store.get_survey(survey_id)
+        # Traceability: Survey ID, model version per task and a preview of the original.
+        self.assertIn(f'Survey ID <code>{survey["survey_code"]}</code>', html)
+        self.assertIn('orange', html)
+        self.assertIn('80% confidence', html)
+        self.assertIn(survey['images'][0]['storage_url'], html)
+        if not self.store.demo_mode:  # the demo store keeps no model records or timestamps
+            self.assertIn('<code title="test-v1">test-v1</code>', html)
+            self.assertIn('Analysed 20', html)
+        site_page = self.client.get('/sites/1').get_data(as_text=True)
+        self.assertIn(survey['survey_code'], site_page)
 
     def test_results_page_filters_by_site_and_counts_failures(self):
         self.post()
@@ -324,6 +335,29 @@ class SurveyFlowTests(unittest.TestCase):
         self.assertIn('Failed 1', html)
         other = self.client.get('/results?site_id=999').get_data(as_text=True)
         self.assertIn('No analysis results yet', other)
+
+    def test_sites_and_results_survive_bad_settings_and_sparse_rows(self):
+        with patch.dict(os.environ, {'AIFN_SITES_RECENT_DAYS': 'ninety', 'AIFN_RESULTS_PREVIEW_TYPES': ' .JPG, ,png'}):
+            app = Flask(__name__, template_folder=str(ROOT / 'flask-application/templates'))
+            app.config.update(TESTING=True, SECRET_KEY='test', UPLOAD_FOLDER=self.directory.name)
+            install_dashboard(app, self.store)
+        self.assertEqual(app.config['SITES_RECENT_DAYS'], 90)
+        self.assertEqual(app.config['RESULTS_PREVIEW_TYPES'], ('jpg', 'png'))
+        response = self.post(self.form_data(site_id='draft:local', new_site=json.dumps({'name': 'Sparse site'})))
+        survey = self.store.get_survey(int(response.location.rsplit('/', 1)[1]))
+        models = self.store.register_models(MODELS)
+        # Results with no class, no confidence and a failure, as older or partial rows may have.
+        self.store.save_analysis(survey['images'][0]['image_id'], [
+            dict(analysis_type='binary_detection', status='completed', model_id=models['binary_detection']),
+            dict(analysis_type='species_classification', status='failed', error_message='x',
+                 model_id=models['species_classification'])])
+        self.app.config.update(SITES_MAP_URL='https://maps.example/{latitude}/{0}')
+        for url in ('/sites', '/sites/1', f"/sites/{survey['site_id']}", '/results',
+                    f"/results?site_id={survey['site_id']}", '/results?site_id=abc'):
+            with self.subTest(url=url):
+                self.assertEqual(self.client.get(url).status_code, 200)
+        html = self.client.get('/results').get_data(as_text=True)
+        self.assertIn('Failed 1', html)
 
     def test_new_survey_preselects_site_from_site_page(self):
         html = self.client.get('/surveys/new?site_id=1').get_data(as_text=True)

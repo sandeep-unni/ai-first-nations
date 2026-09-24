@@ -59,7 +59,7 @@ class DemoStore:
         surveys, analyses = [], []
         for survey in self.list_surveys(site_id):
             images = survey.get('images', [])
-            surveys.append(dict(survey, image_count=len(images)))
+            surveys.append(dict(survey, image_count=len(images), preview=dict(images[0]) if images else None))
             for image in images:
                 for result in image.get('analyses', []):
                     analyses.append(dict(result, survey_id=survey['survey_id'], image_id=image['image_id']))
@@ -191,12 +191,18 @@ class PostgresStore:
             surveys = conn.execute(f'''
                 select v.survey_id, v.survey_code, v.survey_name, v.survey_date, v.status,
                        v.site_id, s.site_name,
-                       (select count(*) from image i where i.survey_id=v.survey_id) as image_count
+                       (select count(*) from image i where i.survey_id=v.survey_id) as image_count,
+                       (select to_jsonb(p) from (
+                            select i.image_id, i.filename, i.file_type, i.storage_provider,
+                                   i.storage_container_id, i.storage_item_id, i.storage_url
+                            from image i where i.survey_id=v.survey_id
+                            order by i.capture_sequence nulls last, i.image_id limit 1) p) as preview
                 from survey v join site s on s.site_id=v.site_id
                 {where} order by v.survey_date desc, v.survey_id desc''', params).fetchall()
             analyses = conn.execute(f'''
                 select distinct on (a.image_id, a.analysis_type)
                        i.survey_id, a.image_id, a.analysis_type, a.status, a.predicted_class, a.confidence,
+                       a.processed_at,
                        m.model_name, m.model_version,
                        coalesce((select jsonb_object_agg(t.class_label, t.tile_count)
                                  from tile_composition t where t.analysis_id=a.analysis_id), '{{}}'::jsonb) as tile_counts
