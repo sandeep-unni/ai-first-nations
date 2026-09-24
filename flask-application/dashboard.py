@@ -10,6 +10,13 @@ from dashboard_store import get_store
 from survey_flow import install_survey_flow
 
 
+# Colour-named model classes drawn together, stepped so every pair stays distinct
+# for colour-blind readers and each clears the chart lightness band on white
+# (checked with the dataviz palette validator, all pairs). Labels beside every
+# mark carry identity too, since yellow is below 3:1 contrast on its own.
+VALIDATED_CLASS_COLOURS = {"orange": "#e2622a", "red": "#a61b1b", "yellow": "#d8ac0c"}
+
+
 def install_dashboard(app, store=None):
     store = store if store is not None else get_store()
     install_survey_flow(app, store)
@@ -58,11 +65,14 @@ def install_dashboard(app, store=None):
         return site
 
     def class_colours(label):
-        """Colour a model class from its label: a CSS colour name (orange) is used
-        as-is; any other label gets a stable generated colour. Returns the generated
-        colour and, when the label may be a colour name, the named variant."""
+        """Colour a model class from its label: a colour-named class (orange) is drawn
+        in that colour, using a validated step where one exists; any other label gets
+        a stable generated colour. Returns the generated colour and, when the label
+        may be a colour name, the named variant."""
         hue = int(hashlib.sha256(str(label).encode()).hexdigest()[:6], 16) % 360
-        named = f"color-mix(in srgb, {str(label).lower()} 88%, #333)" if str(label).isalpha() else None
+        name = str(label).lower()
+        named = VALIDATED_CLASS_COLOURS.get(name) or (
+            f"color-mix(in srgb, {name} 88%, #333)" if name.isalpha() else None)
         return f"hsl({hue} 45% 50%)", named
 
     def class_style(label):
@@ -183,13 +193,107 @@ def install_dashboard(app, store=None):
             demo_mode=store.demo_mode,
         )
 
-    def unfinished(tab, label, **kwargs):
-        return render_template("dashboard_ui/unfinished.html", tab_label=label, active=tab)
+    def compare_change(before, after):
+        """Differences between two survey summaries; labels and tasks come from the data."""
+        old, new = before["summary"], after["summary"]
+        old_mix = {row["label"]: row["percent"] for row in old["composition"]["rows"]}
+        new_mix = {row["label"]: row["percent"] for row in new["composition"]["rows"]}
+        classes = [dict(label=label, before=old_mix.get(label, 0.0), after=new_mix.get(label, 0.0),
+                        delta=new_mix.get(label, 0.0) - old_mix.get(label, 0.0))
+                   for label in sorted(set(old_mix) | set(new_mix))]
+        tasks = []
+        for name in sorted(set(old["tasks"]) | set(new["tasks"])):
+            a, b = old["tasks"].get(name), new["tasks"].get(name)
+            top = lambda task: task["rows"][0]["label"] if task and task["rows"] else None
+            conf = lambda task: task["mean_confidence"] if task else None
+            models = lambda task: task["models"] if task else []
+            tasks.append(dict(name=name, before=top(a), after=top(b), before_conf=conf(a), after_conf=conf(b),
+                              before_models=models(a), after_models=models(b),
+                              model_changed=models(a) != models(b)))
+        both_tiles = old["composition"]["total_tiles"] and new["composition"]["total_tiles"]
+        days = (date.fromisoformat(str(after["survey_date"])) - date.fromisoformat(str(before["survey_date"]))).days
+        return dict(classes=classes, tasks=tasks, days=days,
+                    mangrove_before=old["composition"]["mangrove_percent"] if both_tiles else None,
+                    mangrove_after=new["composition"]["mangrove_percent"] if both_tiles else None,
+                    models_changed=any(task["model_changed"] for task in tasks))
 
-    routes = [
-        ("/compare", "compare", "compare", "Compare Over Time"),
-    ]
-    for path, endpoint, tab, label in routes:
-        def placeholder(tab=tab, label=label, **kwargs):
-            return unfinished(tab, label, **kwargs)
-        app.add_url_rule(path, endpoint, placeholder)
+    def trend_chart(timeline, before, after, width=640, height=230):
+        """SVG geometry for mangrove share across the site's surveys (single series)."""
+        points = [s for s in timeline if s["summary"]["composition"]["total_tiles"]]
+        if not points:
+            return None
+        left, right, top, bottom = 46, 24, 18, 42
+        plot_w, plot_h = width - left - right, height - top - bottom
+        days = [date.fromisoformat(str(s["survey_date"])).toordinal() for s in points]
+        # Real time spacing, unless dates repeat (then even spacing keeps points apart).
+        spread = max(days) - min(days)
+        if len(points) == 1:
+            xs = [left + plot_w / 2]
+        elif spread and len(set(days)) == len(days):
+            xs = [left + plot_w * (d - min(days)) / spread for d in days]
+        else:
+            xs = [left + plot_w * i / (len(points) - 1) for i in range(len(points))]
+        marks = []
+        for x, s in zip(xs, points):
+            value = s["summary"]["composition"]["mangrove_percent"]
+            role = ("From" if before and s["survey_id"] == before["survey_id"] else
+                    "To" if after and s["survey_id"] == after["survey_id"] else "")
+            marks.append(dict(x=x, y=top + plot_h * (1 - value / 100), value=value, role=role,
+                              date=str(s["survey_date"]), name=s["survey_name"] or s["survey_code"],
+                              survey_id=s["survey_id"]))
+        line = " ".join(f"{'M' if i == 0 else 'L'}{m['x']:.1f},{m['y']:.1f}" for i, m in enumerate(marks))
+        area = (f"{line} L{marks[-1]['x']:.1f},{top + plot_h:.1f} L{marks[0]['x']:.1f},{top + plot_h:.1f} Z"
+                if len(marks) > 1 else None)
+        # Date labels: all when few, otherwise first, last and the compared pair.
+        labelled = {0, len(marks) - 1} | {i for i, m in enumerate(marks) if m["role"]}
+        for i, m in enumerate(marks):
+            m["show_date"] = len(marks) <= 6 or i in labelled
+        ticks = [dict(value=v, y=top + plot_h * (1 - v / 100)) for v in (0, 25, 50, 75, 100)]
+        return dict(width=width, height=height, left=left, right=width - right, top=top,
+                    base=top + plot_h, marks=marks, line=line, area=area, ticks=ticks)
+
+    @app.route("/compare")
+    def compare():
+        site_id = request.args.get("site_id", type=int)
+        # A chosen site loads only its own surveys; with none chosen, every site is
+        # read once to pick the one with the most analysed surveys.
+        surveys, analyses = store.analysis_results(site_id)
+        by_survey = {}
+        for result in analyses:
+            by_survey.setdefault(result["survey_id"], []).append(result)
+        by_site = {}
+        for survey in reversed(surveys):  # oldest first
+            row = dict(survey, summary=summarise(by_survey.get(survey["survey_id"], [])))
+            by_site.setdefault(survey["site_id"], []).append(row)
+        analysed = {site: [s for s in rows if s["summary"]["images"]] for site, rows in by_site.items()}
+        if site_id is None and analysed:
+            # Open on the site with the most analysed surveys (latest activity breaks ties).
+            site_id = max(analysed, key=lambda site: (len(analysed[site]), by_site[site][-1]["survey_id"]))
+        timeline = by_site.get(site_id, [])
+        choices = analysed.get(site_id, [])
+        ids = [s["survey_id"] for s in choices]
+        after_id = request.args.get("to", type=int)
+        before_id = request.args.get("from", type=int)
+        after_id = after_id if after_id in ids else (ids[-1] if ids else None)
+        if before_id not in ids or before_id == after_id:
+            earlier = [i for i in ids if ids.index(i) < ids.index(after_id)] if after_id else []
+            before_id = earlier[-1] if earlier else next((i for i in ids if i != after_id), None)
+        before = next((s for s in choices if s["survey_id"] == before_id), None)
+        after = next((s for s in choices if s["survey_id"] == after_id), None)
+        if before and after and (str(before["survey_date"]), before_id) > (str(after["survey_date"]), after_id):
+            before, after = after, before  # always read change forwards in time
+        return render_template(
+            "dashboard_ui/compare.html",
+            sites=store.list_sites(),
+            site_id=site_id,
+            timeline=timeline,
+            choices=choices,
+            before=before,
+            after=after,
+            change=compare_change(before, after) if before and after else None,
+            trend=trend_chart(timeline, before, after),
+            class_style=class_style,
+            status_label=status_label,
+            active="compare",
+            demo_mode=store.demo_mode,
+        )

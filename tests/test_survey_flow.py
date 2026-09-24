@@ -287,7 +287,7 @@ class SurveyFlowTests(unittest.TestCase):
         html = self.client.get('/sites').get_data(as_text=True)
         self.assertIn('in the last 7 days', html)
         self.assertIn('https://maps.example/-17.6', html)
-        self.assertIn('color-mix(in srgb, orange', html)
+        self.assertIn('#e2622a', html)  # validated step for a colour-named class
         # A class that isn't a CSS colour name still gets a generated colour.
         self.assertRegex(html, r'Teal-ish 33%')
         detail = self.client.get(f'/sites/{site_id}').get_data(as_text=True)
@@ -358,6 +358,42 @@ class SurveyFlowTests(unittest.TestCase):
                 self.assertEqual(self.client.get(url).status_code, 200)
         html = self.client.get('/results').get_data(as_text=True)
         self.assertIn('Failed 1', html)
+
+    def test_compare_page_shows_change_between_surveys(self):
+        html = self.client.get('/compare').get_data(as_text=True)
+        self.assertEqual(self.client.get('/compare').status_code, 200)
+        self.assertRegex(html, 'No surveys to compare yet|Not enough analysed surveys to compare')
+        first = self.post(self.form_data(survey_date=(date.today() - timedelta(days=30)).isoformat()))
+        process_next(self.app, self.store, lambda path: dict(prediction(path), tiles={'Non-Mangrove': 2, 'orange': 6, 'red': 2}), MODELS)
+        html = self.client.get('/compare?site_id=1').get_data(as_text=True)
+        self.assertIn('Not enough analysed surveys to compare', html)
+        second = self.post()
+        process_next(self.app, self.store, lambda path: dict(prediction(path), tiles={'orange': 5, 'red': 5}), MODELS)
+        first_id, second_id = (int(r.location.rsplit('/', 1)[1]) for r in (first, second))
+        html = self.client.get('/compare').get_data(as_text=True)  # opens on the busiest site
+        self.assertIn('<strong>100%</strong>', html)
+        self.assertIn(f'from 80% on {(date.today() - timedelta(days=30)).isoformat()}', html)
+        self.assertIn('data-tip-value="80.0%"', html)  # trend point for the earlier survey
+        self.assertIn('▲ +20.0 pts', html)   # mangrove share
+        self.assertIn('compare-delta up">▲ +20.0 pts', html)  # more mangrove is tinted as good
+        self.assertIn('compare-delta neutral">▼ -25.0 pts', html)   # orange 75% -> 50%, a neutral shift
+        self.assertIn('compare-delta neutral">▲ +25.0 pts', html)   # red 25% -> 50%
+        self.assertIn('30 days', html)
+        self.assertNotIn('different model versions', html)
+        # Picking the surveys in reverse order still reads change forwards in time.
+        swapped = self.client.get(f'/compare?site_id=1&from={second_id}&to={first_id}').get_data(as_text=True)
+        self.assertIn('from 80% on', swapped)
+        # A newer model on the second survey is flagged for traceability.
+        newer = dict(MODELS, species_classification=dict(MODELS['species_classification'], version='test-v2'))
+        survey = self.store.get_survey(second_id)
+        results = [dict(r, model_id=self.store.register_models(newer)['species_classification'])
+                   for r in survey['images'][0]['analyses'] if r['analysis_type'] == 'species_classification']
+        self.store.save_analysis(survey['images'][0]['image_id'], results)
+        if not self.store.demo_mode:  # the demo store keeps no model records
+            html = self.client.get('/compare?site_id=1').get_data(as_text=True)
+            self.assertIn('different model versions', html)
+            self.assertIn('Model changed', html)
+        self.assertEqual(self.client.get('/compare?site_id=999&from=abc').status_code, 200)
 
     def test_new_survey_preselects_site_from_site_page(self):
         html = self.client.get('/surveys/new?site_id=1').get_data(as_text=True)

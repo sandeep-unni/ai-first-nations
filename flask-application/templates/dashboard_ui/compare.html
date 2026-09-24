@@ -1,0 +1,132 @@
+{% extends "dashboard_ui/base.html" %}
+{% block title %}Compare Over Time · AI First Nations{% endblock %}
+{% block page_title %}Compare Over Time{% endblock %}
+{% block page_subtitle %}How a site has changed between drone surveys.{% endblock %}
+{# Values show as whole percents, so a change under half a point reads as no change.
+   Only a quantity where more is better (mangrove share) is tinted; class shifts stay neutral. #}
+{% macro shift(delta, unit='pts', tinted=false) %}{% if delta >= 0.5 %}<span class="compare-delta {{ 'up' if tinted else 'neutral' }}">▲ {{ '%+.1f'|format(delta) }} {{ unit }}</span>{% elif delta <= -0.5 %}<span class="compare-delta {{ 'down' if tinted else 'neutral' }}">▼ {{ '%+.1f'|format(delta) }} {{ unit }}</span>{% else %}<span class="compare-delta same">No change</span>{% endif %}{% endmacro %}
+{% macro survey_label(s) %}{{ s.survey_date }} · {{ s.survey_name or s.survey_code }}{% endmacro %}
+{% block body %}
+<form class="results-toolbar" method="get">
+    <label for="compare-site">Site
+        <select name="site_id" id="compare-site">{% for site in sites %}<option value="{{ site.site_id }}" {% if site_id == site.site_id %}selected{% endif %}>{{ site.site_name }}</option>{% endfor %}</select>
+    </label>
+    {% if choices|length > 1 %}
+    <label for="compare-from">From survey
+        <select name="from" id="compare-from">{% for s in choices %}<option value="{{ s.survey_id }}" {% if before and before.survey_id == s.survey_id %}selected{% endif %}>{{ survey_label(s) }}</option>{% endfor %}</select>
+    </label>
+    <label for="compare-to">To survey
+        <select name="to" id="compare-to">{% for s in choices %}<option value="{{ s.survey_id }}" {% if after and after.survey_id == s.survey_id %}selected{% endif %}>{{ survey_label(s) }}</option>{% endfor %}</select>
+    </label>
+    {% endif %}
+    <button class="btn" type="submit">Compare</button>
+</form>
+
+{% if change %}
+<section class="compare-hero">
+    <div class="compare-figure">
+        <small>Mangrove share of image tiles</small>
+        {% if change.mangrove_after is not none %}
+        <strong>{{ '%.0f'|format(change.mangrove_after) }}%</strong>
+        <p>{{ shift(change.mangrove_after - change.mangrove_before, tinted=true) }} <span class="muted">from {{ '%.0f'|format(change.mangrove_before) }}% on {{ before.survey_date }}</span></p>
+        {% else %}<strong>—</strong><p class="muted">One of these surveys has no tile-level results.</p>{% endif %}
+    </div>
+    <div class="compare-pair">
+        <div><small>From</small><a href="{{ url_for('survey_detail', survey_id=before.survey_id) }}">{{ before.survey_name or before.survey_code }}</a><span>{{ before.survey_date }}</span><code>{{ before.survey_code or before.survey_id }}</code></div>
+        <div class="compare-arrow" aria-hidden="true"><span>→</span><small>{{ change.days }} day{{ '' if change.days == 1 else 's' }}</small></div>
+        <div><small>To</small><a href="{{ url_for('survey_detail', survey_id=after.survey_id) }}">{{ after.survey_name or after.survey_code }}</a><span>{{ after.survey_date }}</span><code>{{ after.survey_code or after.survey_id }}</code></div>
+    </div>
+    {% if change.models_changed %}<p class="compare-warning" role="note"><span aria-hidden="true">⚠</span> Analysed with different model versions — part of this change may come from the model rather than the site.</p>{% endif %}
+</section>
+
+<div class="compare-grid">
+    <section class="card">
+        <div class="card-head"><h3>Colour mix, before and after</h3><span class="muted">share of mangrove tiles</span></div>
+        {% if change.classes %}
+        <div class="compare-stacks">
+            {% for label, survey in [('Before', before), ('After', after)] %}{% set mix = survey.summary.composition %}
+            <div class="compare-stack-row">
+                <span>{{ label }}<small>{{ survey.survey_date }}</small></span>
+                {% if mix.mangrove_tiles %}<div class="compare-stack" role="img" aria-label="{{ label }}: {% for row in mix.rows %}{{ row.label }} {{ '%.0f'|format(row.percent) }}%{{ ', ' if not loop.last }}{% endfor %}">{% for row in mix.rows if row.tiles %}<i style="flex-basis: {{ '%.3f'|format(row.percent) }}%; {{ class_style(row.label) }}" tabindex="0" data-tip-value="{{ '%.1f'|format(row.percent) }}%" data-tip-label="{{ row.label|capitalize }} · {{ label }} ({{ row.tiles }} tiles)"></i>{% endfor %}</div>
+                {% else %}<div class="compare-stack empty"></div>{% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        <div class="compare-table-wrap"><table class="compare-table">
+            <thead><tr><th>Class</th><th>Before</th><th>After</th><th>Change</th></tr></thead>
+            <tbody>{% for row in change.classes %}<tr>
+                <td><span><i class="site-dot" style="{{ class_style(row.label) }}"></i>{{ row.label|capitalize }}</span></td>
+                <td>{{ '%.0f'|format(row.before) }}%</td><td>{{ '%.0f'|format(row.after) }}%</td><td>{{ shift(row.delta) }}</td>
+            </tr>{% endfor %}</tbody>
+        </table></div>
+        {% else %}<p class="empty">No mangrove tiles in either survey.</p>{% endif %}
+    </section>
+
+    <section class="card">
+        <div class="card-head"><h3>Mangrove share over time</h3><span class="muted">{{ trend.marks|length if trend else 0 }} analysed survey{{ '' if trend and trend.marks|length == 1 else 's' }}</span></div>
+        {% if trend %}
+        <figure class="compare-trend" data-trend>
+            <svg viewBox="0 0 {{ trend.width }} {{ trend.height }}" role="img" aria-label="Mangrove share of image tiles by survey date: {% for m in trend.marks %}{{ m.date }} {{ '%.0f'|format(m.value) }}%{{ ', ' if not loop.last }}{% endfor %}">
+                {% for t in trend.ticks %}<line class="grid" x1="{{ trend.left }}" x2="{{ trend.right }}" y1="{{ '%.1f'|format(t.y) }}" y2="{{ '%.1f'|format(t.y) }}"/><text class="tick" x="{{ trend.left - 10 }}" y="{{ '%.1f'|format(t.y + 4) }}" text-anchor="end">{{ t.value }}%</text>{% endfor %}
+                {% if trend.area %}<path class="area" d="{{ trend.area }}"/>{% endif %}
+                <path class="line" d="{{ trend.line }}"/>
+                <line class="crosshair" x1="0" x2="0" y1="{{ trend.top }}" y2="{{ '%.1f'|format(trend.base) }}" hidden/>
+                {% for m in trend.marks %}
+                <g class="point{{ ' is-compared' if m.role }}" tabindex="0" data-x="{{ '%.1f'|format(m.x) }}" data-tip-value="{{ '%.1f'|format(m.value) }}%" data-tip-label="{{ m.date }} · {{ m.name }}{{ ' (' ~ m.role ~ ')' if m.role }}">
+                    <rect class="hit" x="{{ '%.1f'|format(m.x - 14) }}" y="{{ trend.top }}" width="28" height="{{ '%.1f'|format(trend.base - trend.top) }}"/>
+                    <circle cx="{{ '%.1f'|format(m.x) }}" cy="{{ '%.1f'|format(m.y) }}" r="{{ 6 if m.role else 4.5 }}"/>
+                    {% if m.role %}<text class="role" x="{{ '%.1f'|format(m.x) }}" y="{{ '%.1f'|format(m.y - 12 if m.y > trend.top + 24 else m.y + 22) }}" text-anchor="middle">{{ '%.0f'|format(m.value) }}%</text>{% endif %}
+                    {% if m.show_date %}<text class="tick" x="{{ '%.1f'|format(m.x) }}" y="{{ '%.1f'|format(trend.base + 20) }}" text-anchor="{{ 'start' if m.x < trend.left + 30 else 'end' if m.x > trend.right - 30 else 'middle' }}">{{ m.date }}</text>{% endif %}
+                </g>
+                {% endfor %}
+            </svg>
+            <div class="viz-tip" role="status" hidden><strong></strong><span></span></div>
+        </figure>
+        <p class="muted compare-caption">Larger points are the two surveys being compared. Hover or tab to a point for its value; every survey is also listed in the timeline below.</p>
+        {% else %}<p class="empty">No tile-level results to chart yet.</p>{% endif %}
+    </section>
+</div>
+
+<section class="card">
+    <div class="card-head"><h3>Model outputs</h3><span class="muted">top result per model, before → after</span></div>
+    <div class="compare-tasks">
+    {% for task in change.tasks %}
+        <div class="compare-task">
+            <div class="results-task-head"><strong>{{ status_label(task.name) }}</strong>{% if task.model_changed %}<span class="compare-flag">⚠ Model changed</span>{% endif %}</div>
+            <div class="compare-outcome">
+                <div>{% if task.before %}<span class="compare-class-chip"><i class="site-dot" style="{{ class_style(task.before) }}"></i>{{ task.before }}</span>{% else %}<span class="muted">—</span>{% endif %}{% if task.before_conf is not none %}<small>{{ '%.0f'|format(task.before_conf * 100) }}% confidence</small>{% endif %}</div>
+                <span class="compare-arrow" aria-hidden="true"><span>→</span></span>
+                <div>{% if task.after %}<span class="compare-class-chip"><i class="site-dot" style="{{ class_style(task.after) }}"></i>{{ task.after }}</span>{% else %}<span class="muted">—</span>{% endif %}{% if task.after_conf is not none %}<small>{{ '%.0f'|format(task.after_conf * 100) }}% confidence</small>{% endif %}</div>
+            </div>
+            {% if task.before_models or task.after_models %}<p class="results-model muted">Model {% for v in task.before_models %}<code title="{{ v }}">{{ v if v|length <= 20 else v[:20] ~ '…' }}</code>{% endfor %}{% if task.model_changed %} → {% for v in task.after_models %}<code title="{{ v }}">{{ v if v|length <= 20 else v[:20] ~ '…' }}</code>{% endfor %}{% endif %}</p>{% endif %}
+        </div>
+    {% endfor %}
+    </div>
+</section>
+{% elif timeline %}
+<section class="card results-empty"><h3>Not enough analysed surveys to compare</h3><p>This site needs at least two surveys with analysis results. {{ choices|length }} of {{ timeline|length }} survey{{ '' if timeline|length == 1 else 's' }} here {{ 'has' if choices|length == 1 else 'have' }} results so far.</p><a class="btn primary" href="{{ url_for('survey_step_1', site_id=site_id) }}">+ Add a survey at this site</a></section>
+{% else %}
+<section class="card results-empty"><h3>No surveys to compare yet</h3><p>Once a site has two or more analysed surveys, you can see how it changed here.</p><a class="btn primary" href="{{ url_for('survey_step_1', site_id=site_id) if site_id else url_for('survey_step_1') }}">+ Create Survey</a></section>
+{% endif %}
+
+{% if timeline %}
+<section class="card">
+    <div class="card-head"><h3>Survey timeline</h3><span class="muted">oldest first</span></div>
+    <ol class="compare-timeline">
+    {% for s in timeline %}{% set mix = s.summary.composition %}
+        <li class="{{ 'is-selected' if (before and s.survey_id == before.survey_id) or (after and s.survey_id == after.survey_id) }}">
+            <div class="compare-when"><strong>{{ s.survey_date }}</strong>{% if before and s.survey_id == before.survey_id %}<span class="compare-flag">From</span>{% elif after and s.survey_id == after.survey_id %}<span class="compare-flag">To</span>{% endif %}</div>
+            <div class="compare-what">
+                <div><a href="{{ url_for('survey_detail', survey_id=s.survey_id) }}">{{ s.survey_name or s.survey_code }}</a> <code>{{ s.survey_code or s.survey_id }}</code></div>
+                {% if mix.mangrove_tiles %}<div class="results-mini"><div class="site-mix-bar">{% for row in mix.rows if row.tiles %}<span style="width: {{ '%.2f'|format(row.percent) }}%; {{ class_style(row.label) }}"></span>{% endfor %}</div><span>{{ '%.0f'|format(mix.mangrove_percent) }}% mangrove</span></div>
+                {% elif mix.total_tiles %}<p class="muted">No mangrove in {{ mix.total_tiles }} tiles</p>
+                {% else %}<p class="muted">{{ 'No tile results' if s.summary.images else 'Not analysed yet' }} · {{ status_label(s.status) }}</p>{% endif %}
+            </div>
+        </li>
+    {% endfor %}
+    </ol>
+</section>
+<p class="muted results-note">Shares describe image tiles, not measured ground area, and class names are the model's labels, not validated species. Compare surveys flown over the same area for a meaningful change.</p>
+{% endif %}
+<script src="{{ url_for('static', filename='dashboard/compare.js') }}" defer></script>
+{% endblock %}
