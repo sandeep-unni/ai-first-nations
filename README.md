@@ -67,8 +67,13 @@ These labels are colour classes, not validated species, health or canopy coverag
 The survey page shows progress, per-image predictions/probabilities and aggregate
 image counts and mean class confidence. Results and model versions are stored in
 the existing model, analysis_result and class_probability tables; aggregate
-statistics are calculated from those saved results. No schema changes are needed
-when the database already matches init-db/01-schema.sql.
+statistics are calculated from those saved results.
+
+Each image's 512px tiles are also labelled individually (Non-Mangrove, orange, red
+or yellow), and the survey page shows each colour class's share of the mangrove
+tiles. Tile counts are stored in tile_composition. Databases created before this
+table existed need init-db/migrations/2026-09-24-tile-composition.sql applied once;
+surveys analysed earlier have no tile counts.
 
 A single background thread polls pending surveys. A PostgreSQL advisory lock
 allows only one consumer at a time. Each image's results commit separately;

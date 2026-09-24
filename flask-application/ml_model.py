@@ -376,7 +376,7 @@ def predict_mangrove(image_path, model, mangrove_type, gpu):
         return None, None, str(e)
 
 
-def predict_combined(image_path, binary_model, model, mangrove_type, gpu):
+def predict_combined(image_path, binary_model, model, mangrove_type, gpu, tile_size=512, batch_size=8):
     """
     Combined pipeline: binary mangrove detection first, then multi-class
     classification only if mangrove is detected.
@@ -384,33 +384,79 @@ def predict_combined(image_path, binary_model, model, mangrove_type, gpu):
     Returns a dict with:
         - binary: binary detection result
         - multi_class: multi-class result (or None if no mangrove detected)
+        - tiles: tile counts per label ('Non-Mangrove' or a mangrove type)
     """
-    from binary_detector import predict_binary
+    from binary_detector import BINARY_LABELS, predict_binary, tile_batches
 
-    # Step 1: Binary detection
-    binary_result = predict_binary(image_path, binary_model)
+    img = _load_image_as_pil(image_path)
+    if img.width < tile_size or img.height < tile_size:
+        # The two models tile small images differently (padded vs whole image),
+        # so the whole image counts as a single tile with its image-level label.
+        img.close()
+        binary_result = predict_binary(image_path, binary_model)
+        multi_class_result = None
+        if binary_result['prediction'] == 'Mangrove':
+            pred_class, confidence, avg_probs = predicting_test(
+                image_path=image_path,
+                model=model,
+                transform=INFERENCE_TRANSFORM,
+                mangrove_type=mangrove_type,
+                gpu=gpu
+            )
+            multi_class_result = {
+                'predicted_class': pred_class,
+                'confidence': confidence,
+                'probabilities': {
+                    mangrove_type[i]: float(avg_probs[i]) for i in range(len(mangrove_type))
+                }
+            }
+        label = multi_class_result['predicted_class'] if multi_class_result else binary_result['prediction']
+        return {'binary': binary_result, 'multi_class': multi_class_result, 'tiles': {label: 1}}
 
-    # Step 2: If mangrove detected, run multi-class classification
+    # Large images: both models were trained on the same 512px tiles and
+    # transform, so one pass feeds each tile to both and keeps per-tile labels.
+    binary_probs, class_probs = [], []
+    with img, torch.inference_mode():
+        for batch in tile_batches(img, INFERENCE_TRANSFORM, tile_size, batch_size=batch_size, pad=True):
+            batch = batch.to(gpu)
+            binary_probs.append(torch.softmax(binary_model(batch), dim=1).cpu().numpy())
+            class_probs.append(torch.softmax(model(batch), dim=1).cpu().numpy())
+    binary_probs = np.concatenate(binary_probs, axis=0)
+    class_probs = np.concatenate(class_probs, axis=0)
+
+    # Image-level results: the mean of tile probabilities, as before.
+    binary_avg = binary_probs.mean(axis=0)
+    binary_idx = int(binary_avg.argmax())
+    binary_result = {
+        'prediction': BINARY_LABELS[binary_idx],
+        'confidence': float(binary_avg[binary_idx]),
+        'probs': binary_avg.tolist(),
+        'n_tiles': len(binary_probs)
+    }
     multi_class_result = None
     if binary_result['prediction'] == 'Mangrove':
-        pred_class, confidence, avg_probs = predicting_test(
-            image_path=image_path,
-            model=model,
-            transform=INFERENCE_TRANSFORM,
-            mangrove_type=mangrove_type,
-            gpu=gpu
-        )
+        class_avg = class_probs.mean(axis=0)
+        class_idx = int(class_avg.argmax())
         multi_class_result = {
-            'predicted_class': pred_class,
-            'confidence': confidence,
+            'predicted_class': mangrove_type[class_idx],
+            'confidence': float(class_avg[class_idx]),
             'probabilities': {
-                mangrove_type[i]: float(avg_probs[i]) for i in range(len(mangrove_type))
+                mangrove_type[i]: float(class_avg[i]) for i in range(len(mangrove_type))
             }
         }
 
+    # Tile-level labels: a tile's mangrove type counts only where the binary
+    # detector says that tile is mangrove.
+    is_mangrove = binary_probs.argmax(axis=1) == BINARY_LABELS.index('Mangrove')
+    tile_class = class_probs.argmax(axis=1)
+    tiles = {'Non-Mangrove': int((~is_mangrove).sum())}
+    for i, name in enumerate(mangrove_type):
+        tiles[name] = int((is_mangrove & (tile_class == i)).sum())
+
     return {
         'binary': binary_result,
-        'multi_class': multi_class_result
+        'multi_class': multi_class_result,
+        'tiles': tiles
     }
 
 

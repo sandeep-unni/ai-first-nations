@@ -127,7 +127,9 @@ class PostgresStore:
                     order by capture_sequence nulls last, image_id''', (survey_id,)).fetchall()
                 results = conn.execute('''select a.*,
                     coalesce((select jsonb_object_agg(p.class_label, p.probability)
-                              from class_probability p where p.analysis_id=a.analysis_id), '{}'::jsonb) as probabilities
+                              from class_probability p where p.analysis_id=a.analysis_id), '{}'::jsonb) as probabilities,
+                    coalesce((select jsonb_object_agg(t.class_label, t.tile_count)
+                              from tile_composition t where t.analysis_id=a.analysis_id), '{}'::jsonb) as tile_counts
                     from analysis_result a join image i on i.image_id=a.image_id
                     where i.survey_id=%s order by a.analysis_id''', (survey_id,)).fetchall()
                 by_image = {}
@@ -244,6 +246,10 @@ class PostgresStore:
                 for label, probability in result.get('probabilities', {}).items():
                     conn.execute('''insert into class_probability (analysis_id, class_label, probability)
                         values (%s, %s, %s)''', (row['analysis_id'], label, probability))
+                # Replaced analyses drop their old tile counts via ON DELETE CASCADE.
+                for label, count in result.get('tile_counts', {}).items():
+                    conn.execute('''insert into tile_composition (analysis_id, class_label, tile_count)
+                        values (%s, %s, %s)''', (row['analysis_id'], label, count))
 
     def dashboard_summary(self):
         with self._connect() as conn, conn.cursor() as cur:

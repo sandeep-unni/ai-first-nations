@@ -231,6 +231,34 @@ class SurveyFlowTests(unittest.TestCase):
         self.assertEqual(self.client.get(response.location).status_code, 200)
         self.assertFalse(process_next(self.app, self.store, prediction, MODELS))
 
+    def test_tile_composition_percentages(self):
+        response = self.post(files=[image_file(), image_file()])
+        outputs = iter([{'Non-Mangrove': 2, 'orange': 6, 'red': 2, 'yellow': 0},
+                        {'Non-Mangrove': 0, 'orange': 2, 'red': 0, 'yellow': 0}])
+        def tiled(path):
+            return dict(prediction(path), tiles=next(outputs))
+        process_next(self.app, self.store, tiled, MODELS)
+        survey = self.store.get_survey(int(response.location.rsplit('/', 1)[1]))
+        composition = survey_statistics(survey)['composition']
+        self.assertEqual((composition['total_tiles'], composition['mangrove_tiles']), (12, 10))
+        self.assertEqual({r['label']: r['percent'] for r in composition['rows']},
+                         {'orange': 80.0, 'red': 20.0, 'yellow': 0.0})
+        detail = self.client.get(response.location).get_data(as_text=True)
+        self.assertIn('Mangrove composition', detail)
+        self.assertIn('80.0%', detail)
+        self.assertIn('Orange 75% · Red 25% of 8 mangrove tiles', detail)
+
+    def test_reanalysis_replaces_tile_counts(self):
+        response = self.post()
+        process_next(self.app, self.store, lambda path: dict(prediction(path), tiles={'orange': 3}), MODELS)
+        survey = self.store.get_survey(int(response.location.rsplit('/', 1)[1]))
+        image = survey['images'][0]
+        results = [dict(r, tile_counts={'orange': 1, 'red': 1}) for r in image['analyses']
+                   if r['analysis_type'] == 'species_classification']
+        self.store.save_analysis(image['image_id'], results)
+        survey = self.store.get_survey(survey['survey_id'])
+        self.assertEqual(survey_statistics(survey)['composition']['total_tiles'], 2)
+
     def test_non_mangrove_skips_classification(self):
         response = self.post()
         def non_mangrove(path):

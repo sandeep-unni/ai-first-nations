@@ -9,8 +9,21 @@ from pathlib import Path
 import threading
 
 
+def tile_composition(tile_counts):
+    """Tile counts -> rows with each mangrove type's share of the mangrove tiles."""
+    tiles = {label: int(count) for label, count in (tile_counts or {}).items()}
+    total = sum(tiles.values())
+    mangrove_tiles = total - tiles.get('Non-Mangrove', 0)
+    rows = [dict(label=label, tiles=count,
+                 percent=100 * count / mangrove_tiles if mangrove_tiles else 0.0)
+            for label, count in sorted(tiles.items()) if label != 'Non-Mangrove']
+    return dict(rows=rows, total_tiles=total, mangrove_tiles=mangrove_tiles,
+                mangrove_percent=100 * mangrove_tiles / total if total else 0.0)
+
+
 def survey_statistics(survey):
     counts = Counter()
+    tiles = Counter()
     confidences = []
     completed = failed = mangrove = 0
     for image in survey['images']:
@@ -26,8 +39,11 @@ def survey_statistics(survey):
         if classification.get('status') == 'completed':
             counts[classification['predicted_class']] += 1
             confidences.append(float(classification['confidence']))
+        if classification.get('status') in ('completed', 'skipped'):
+            tiles.update({label: int(n) for label, n in (classification.get('tile_counts') or {}).items()})
     return dict(completed=completed, failed=failed, mangrove=mangrove,
-                classes=dict(counts), mean_confidence=sum(confidences) / len(confidences) if confidences else None)
+                classes=dict(counts), mean_confidence=sum(confidences) / len(confidences) if confidences else None,
+                composition=tile_composition(tiles))
 
 
 def model_descriptions():
@@ -72,6 +88,7 @@ def process_next(app, store, predict, models):
                                     probabilities=dict(zip(['Non-Mangrove', 'Mangrove'], binary['probs']))),
                                dict(analysis_type='species_classification',
                                     status='completed' if classification else 'skipped',
+                                    tile_counts=output.get('tiles') or {},
                                     **(classification or {}))]
                 except Exception:
                     app.logger.exception('Analysis failed for survey %s image %s', survey_id, image['image_id'])

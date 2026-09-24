@@ -180,6 +180,23 @@ CREATE TABLE class_probability (
 );
 
 -- ---------------------------------------------------------------------
+-- TILE_COMPOSITION  (per-tile labels for one image: how many 512px tiles
+-- were Non-Mangrove / orange / red / yellow; attached to the image's
+-- species_classification analysis)
+-- ---------------------------------------------------------------------
+CREATE TABLE tile_composition (
+    tile_composition_id  SERIAL PRIMARY KEY,
+    analysis_id           INTEGER NOT NULL REFERENCES analysis_result(analysis_id) ON DELETE CASCADE,
+    class_label           VARCHAR(100) NOT NULL,
+    tile_count            INTEGER NOT NULL CHECK (tile_count >= 0),
+
+    CONSTRAINT tile_composition_unique UNIQUE (
+        analysis_id,
+        class_label
+    )
+);
+
+-- ---------------------------------------------------------------------
 -- REPORT  (per-survey downloadable export)
 -- ---------------------------------------------------------------------
 CREATE TABLE report (

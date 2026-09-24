@@ -18,8 +18,14 @@
 {% endif %}</section>
 <section class="card"><h2>Survey results</h2>
 <div class="detail-grid"><div><small>Images analysed</small><strong>{{ stats.completed }} / {{ survey.images|length }}</strong></div><div><small>Mangrove detected</small><strong>{{ stats.mangrove }}</strong></div><div><small>Failed images</small><strong>{{ stats.failed }}</strong></div><div><small>Mean class confidence</small><strong>{{ ('%.1f%%'|format(stats.mean_confidence * 100)) if stats.mean_confidence is not none else '—' }}</strong></div></div>
+{% set composition = stats.composition %}
+{% if composition.mangrove_tiles %}<h3>Mangrove composition</h3>
+<p class="muted">Share of the {{ composition.mangrove_tiles }} mangrove tiles, out of {{ composition.total_tiles }} tiles analysed ({{ '%.1f'|format(composition.mangrove_percent) }}% mangrove).</p>
+<div class="composition">{% for row in composition.rows %}<div class="composition-row"><span class="species-dot {{ row.label|lower }}"></span><strong>{{ row.label|capitalize }}</strong><span class="composition-bar"><span class="{{ row.label|lower }}" style="width: {{ '%.1f'|format(row.percent) }}%"></span></span><span>{{ '%.1f'|format(row.percent) }}% <span class="muted">({{ row.tiles }})</span></span></div>{% endfor %}</div>
+{% elif composition.total_tiles %}<h3>Mangrove composition</h3><p>No mangrove tiles detected in {{ composition.total_tiles }} tiles analysed.</p>
+{% elif stats.completed %}<p class="muted">Tile composition isn't available for this survey: it was analysed before tile-level results were recorded.</p>{% endif %}
 {% if stats.classes %}<h3>Predicted colour classes</h3><ul>{% for label, count in stats.classes|dictsort %}<li>{{ label|capitalize }}: {{ count }} image{{ '' if count == 1 else 's' }}</li>{% endfor %}</ul>{% endif %}
-<p class="muted">Counts describe image predictions. Overlapping drone photos do not measure unique trees or ground coverage. Orange, red and yellow are the model's colour classes.</p></section>
+<p class="muted">Composition counts each 512px tile of each image; tiles overlap slightly, and overlapping drone photos repeat ground, so these are shares of imagery, not measured ground area. Orange, red and yellow are the model's colour classes, not validated species.</p></section>
 <section class="card"><div class="card-head"><h2>Drone images</h2><span class="muted">{{ survey.images|length }} images in this survey</span></div>
 <div class="survey-gallery">{% for image in survey.images %}<article class="image-card">
 {% if image.local_url and image.file_type|lower in ['jpg', 'jpeg', 'png'] %}<a href="{{ image.local_url }}" target="_blank" rel="noopener"><img loading="lazy" src="{{ image.local_url }}" alt="{{ image.filename }}"></a>{% else %}<div class="image-placeholder">{{ 'TIFF original' if image.local_url else 'Stored in ' ~ image.storage_provider }}</div>{% endif %}
@@ -31,6 +37,7 @@
 {% elif result.status == 'skipped' %}Not applicable (no mangrove detected)
 {% else %}{{ result.error_message or 'Pending' }}{% endif %}</p>
 {% if result.probabilities %}<details><summary>Class probabilities</summary><ul>{% for label, probability in result.probabilities.items() %}<li>{{ label }}: {{ '%.1f'|format(probability * 100) }}%</li>{% endfor %}</ul></details>{% endif %}
+{% if result.tile_counts %}{% set image_tiles = tile_composition(result.tile_counts) %}<p><strong>Tiles:</strong> {% if image_tiles.mangrove_tiles %}{% for row in image_tiles.rows if row.tiles %}{{ row.label|capitalize }} {{ '%.0f'|format(row.percent) }}%{{ ' · ' if not loop.last }}{% endfor %} of {{ image_tiles.mangrove_tiles }} mangrove tiles{% if image_tiles.mangrove_tiles < image_tiles.total_tiles %} ({{ image_tiles.total_tiles - image_tiles.mangrove_tiles }} of {{ image_tiles.total_tiles }} non-mangrove){% endif %}{% else %}no mangrove in {{ image_tiles.total_tiles }} tiles{% endif %}</p>{% endif %}
 {% endfor %}
 {% if image.source_metadata %}<details><summary>Saved image metadata</summary><pre class="field-notes">{{ image.source_metadata|tojson(indent=2) }}</pre></details>{% endif %}
 {% if image.local_url %}<a class="btn small" href="{{ image.local_url }}?download=1">Download original</a>{% elif image.storage_url and image.storage_url.startswith(('https://', 'http://')) %}<a class="btn small" href="{{ image.storage_url }}" target="_blank" rel="noopener noreferrer">Open stored image ↗</a>{% else %}<span class="muted">Original is available at its storage location.</span>{% endif %}

@@ -287,11 +287,12 @@ def install_survey_flow(app, store):
             if (image['storage_provider'] == 'local' and
                     image.get('storage_container_id') == app.config['SURVEY_STORAGE_ID']):
                 image['local_url'] = url_for('survey_image', filename=image['storage_item_id'])
-        from survey_processing import survey_statistics
+        from survey_processing import survey_statistics, tile_composition
         session.setdefault('survey_csrf', secrets.token_urlsafe(32))
         return render_template('dashboard_ui/survey_detail.html', active='surveys',
                                demo_mode=store.demo_mode, survey=survey,
-                               stats=survey_statistics(survey), csrf_token=session['survey_csrf'])
+                               stats=survey_statistics(survey), csrf_token=session['survey_csrf'],
+                               tile_composition=tile_composition)
 
     @app.get('/surveys/<int:survey_id>/progress', endpoint='survey_progress')
     def survey_progress(survey_id):
