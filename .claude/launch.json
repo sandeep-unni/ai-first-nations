@@ -1,0 +1,16 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "aifn-dashboard-local",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "AIFN_DEMO_MODE=false",
+        "DATABASE_URL=postgresql://aifn@127.0.0.1:55433/aifn_local",
+        "AIFN_UPLOAD_FOLDER=/private/tmp/claude-501/-Users-mac-Desktop-AIFN-ai-first-nations/e388ff74-89a8-4feb-88b6-3efe86d4a04f/scratchpad/uploads",
+        ".venv/bin/flask", "--app", "flask-application/app.py", "run", "--port", "5055"
+      ],
+      "port": 5055
+    }
+  ]
+}

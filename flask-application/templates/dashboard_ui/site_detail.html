@@ -1,0 +1,28 @@
+{% extends "dashboard_ui/base.html" %}
+{% block title %}{{ site.site_name }} · AI First Nations{% endblock %}
+{% block page_title %}{{ site.site_name }}{% endblock %}
+{% block page_subtitle %}{{ [site.region, site.state, site.country]|select|join(' · ') or 'Monitoring site' }}{% endblock %}
+{% block body %}
+<div class="page-actions"><a class="back-link" href="{{ url_for('sites') }}">← All sites</a><a class="btn primary" href="{{ url_for('survey_step_1', site_id=site.site_id) }}">+ New survey at this site</a></div>
+<section class="card"><div class="detail-grid">
+<div><small>Site code</small><strong>{{ site.site_code or '—' }}</strong></div>
+<div><small>Coordinates</small><strong>{% if site.latitude is not none and site.longitude is not none %}{% if site.map_url %}<a href="{{ site.map_url }}" target="_blank" rel="noopener noreferrer">{% endif %}{{ '%.5f'|format(site.latitude) }}, {{ '%.5f'|format(site.longitude) }}{% if site.map_url %} ↗</a>{% endif %}{% else %}Not recorded{% endif %}</strong></div>
+<div><small>Surveys</small><strong>{{ site.survey_count }}</strong></div>
+<div><small>Images</small><strong>{{ site.image_count }}</strong></div>
+</div>
+{% if site.description %}<h3 class="notes-heading">Description</h3><p class="field-notes">{{ site.description }}</p>{% endif %}</section>
+<section class="card"><div class="card-head"><h2>Latest results</h2>{% if site.latest_completed_id %}<a href="{{ url_for('survey_detail', survey_id=site.latest_completed_id) }}">Survey of {{ site.latest_completed_date }}</a>{% endif %}</div>
+{% set composition = site.composition %}
+{% if composition.mangrove_tiles %}<h3>Mangrove composition</h3>
+<p class="muted">Share of the {{ composition.mangrove_tiles }} mangrove tiles, out of {{ composition.total_tiles }} tiles analysed ({{ '%.1f'|format(composition.mangrove_percent) }}% mangrove).</p>
+<div class="composition">{% for row in composition.rows %}<div class="composition-row"><i class="site-dot" style="{{ class_style(row.label) }}"></i><strong>{{ row.label|capitalize }}</strong><span class="composition-bar"><span style="width: {{ '%.1f'|format(row.percent) }}%; {{ class_style(row.label) }}"></span></span><span>{{ '%.1f'|format(row.percent) }}% <span class="muted">({{ row.tiles }})</span></span></div>{% endfor %}</div>
+<p class="muted">Shares of imagery from the most recent completed survey, not measured ground area. {{ composition.rows|map(attribute='label')|map('capitalize')|join(', ') }} are the model's colour classes, not validated species.</p>
+{% elif composition.total_tiles %}<p>No mangrove tiles detected in {{ composition.total_tiles }} tiles analysed.</p>
+{% elif site.latest_completed_id %}<p class="empty">The most recent completed survey has no tile-level results to summarise.</p>
+{% else %}<p class="empty">No completed analysis at this site yet.</p>{% endif %}</section>
+<section class="card"><div class="card-head"><h2>Survey history</h2><a href="{{ url_for('surveys', site_id=site.site_id) }}">Open in Surveys</a></div>
+<div class="table-wrap"><table><thead><tr><th>Survey</th><th>Date</th><th>Images</th><th>Status</th></tr></thead><tbody>
+{% for survey in surveys %}<tr><td><a href="{{ url_for('survey_detail', survey_id=survey.survey_id) }}">{{ survey.survey_name or survey.survey_code }}</a></td><td>{{ survey.survey_date }}</td><td>{{ survey.image_count }}</td><td><span class="status">{{ status_label(survey.status) }}</span></td></tr>
+{% else %}<tr><td colspan="4" class="empty">No surveys yet. Create a survey to add this site's first drone images.</td></tr>{% endfor %}
+</tbody></table></div></section>
+{% endblock %}

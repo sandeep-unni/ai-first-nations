@@ -1,0 +1,58 @@
+{% extends "dashboard_ui/base.html" %}
+{% block title %}Sites · AI First Nations{% endblock %}
+{% block page_title %}Monitoring Sites{% endblock %}
+{% block page_subtitle %}Where each site stands: when it was last flown and what the latest analysis found.{% endblock %}
+{% block body %}
+<div class="site-toolbar">
+    <label class="site-search">Find a site<input type="search" id="site-search" placeholder="Name, code or region" autocomplete="off"></label>
+    {% if states|length > 1 %}<div class="site-chips" role="group" aria-label="Filter by state">
+        <button type="button" class="site-chip" data-state="" aria-pressed="true">All</button>
+        {% for state in states %}<button type="button" class="site-chip" data-state="{{ state }}" aria-pressed="false">{{ state }}</button>{% endfor %}
+    </div>{% endif %}
+    <p class="site-count muted" id="site-count" aria-live="polite">{{ sites|length }} site{{ '' if sites|length == 1 else 's' }} · {{ surveyed }} surveyed · {{ sites|length - surveyed }} awaiting first survey</p>
+</div>
+
+<div class="site-grid" id="site-grid">
+{% for site in sites %}{% set composition = site.composition %}
+<article class="site-card" data-state="{{ site.state or '' }}" data-search="{{ [site.site_name, site.site_code, site.region, site.state, site.country]|select|join(' ')|lower }}">
+    <header class="site-card-head">
+        <div>
+            <h3><a href="{{ url_for('site_detail', site_id=site.site_id) }}">{{ site.site_name }}</a></h3>
+            <p class="muted">{{ [site.region, site.state, site.country]|select|join(' · ') or 'Location not recorded' }}</p>
+        </div>
+        {% if site.site_code %}<span class="site-code">{{ site.site_code }}</span>{% endif %}
+    </header>
+
+    {% if site.days_since is none %}<p class="site-fresh never"><span></span>Never surveyed</p>
+    {% else %}{% set days = site.days_since %}<p class="site-fresh {{ 'recent' if site.recent else 'older' }}" title="{{ 'Flown' if site.recent else 'Not flown' }} in the last {{ recent_days }} days"><span></span>Last flown {{ site.last_survey_date }} · {% if days == 0 %}today{% elif days < 0 %}in {{ -days }} day{{ '' if days == -1 else 's' }}{% else %}{{ days }} day{{ '' if days == 1 else 's' }} ago{% endif %}{% if site.last_survey_status %} · {{ status_label(site.last_survey_status) }}{% endif %}</p>{% endif %}
+
+    <div class="site-mix">
+    {% if composition.mangrove_tiles %}
+        <div class="site-mix-bar" role="img" aria-label="{% for row in composition.rows %}{{ row.label }} {{ '%.0f'|format(row.percent) }}%{{ ', ' if not loop.last }}{% endfor %}">{% for row in composition.rows if row.tiles %}<span style="width: {{ '%.2f'|format(row.percent) }}%; {{ class_style(row.label) }}"></span>{% endfor %}</div>
+        <p class="site-mix-legend">{% for row in composition.rows %}<span><i class="site-dot" style="{{ class_style(row.label) }}"></i>{{ row.label|capitalize }} {{ '%.0f'|format(row.percent) }}%</span>{% endfor %}</p>
+        <p class="muted">{{ '%.0f'|format(composition.mangrove_percent) }}% of imaged tiles are mangrove · survey of {{ site.latest_completed_date }}</p>
+    {% elif composition.total_tiles %}
+        <div class="site-mix-bar empty"></div><p class="muted">No mangrove found in {{ composition.total_tiles }} tiles · survey of {{ site.latest_completed_date }}</p>
+    {% else %}
+        <div class="site-mix-bar empty"></div><p class="muted">{{ 'No tile results for the latest completed survey' if site.latest_completed_id else 'No analysed survey yet' }}</p>
+    {% endif %}
+    </div>
+
+    <dl class="site-facts">
+        <div><dt>Surveys</dt><dd>{{ site.survey_count }}</dd></div>
+        <div><dt>Images</dt><dd>{{ site.image_count }}</dd></div>
+        <div><dt>Coordinates</dt><dd>{% if site.latitude is not none and site.longitude is not none %}{% if site.map_url %}<a href="{{ site.map_url }}" target="_blank" rel="noopener noreferrer">{% endif %}{{ '%.3f'|format(site.latitude) }}, {{ '%.3f'|format(site.longitude) }}{% if site.map_url %}</a>{% endif %}{% else %}—{% endif %}</dd></div>
+    </dl>
+
+    <footer class="site-card-actions">
+        <a class="btn small" href="{{ url_for('site_detail', site_id=site.site_id) }}">View site</a>
+        <a class="btn small primary" href="{{ url_for('survey_step_1', site_id=site.site_id) }}">+ Survey</a>
+    </footer>
+</article>
+{% else %}
+<section class="card site-empty"><h3>No monitoring sites yet</h3><p>Create a survey and choose <strong>Create new site</strong> to add the first location.</p><a class="btn primary" href="{{ url_for('survey_step_1') }}">+ Create Survey</a></section>
+{% endfor %}
+</div>
+<p class="empty" id="site-no-match" hidden>No sites match this search.</p>
+<script src="{{ url_for('static', filename='dashboard/sites.js') }}" defer></script>
+{% endblock %}

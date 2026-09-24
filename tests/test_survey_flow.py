@@ -248,6 +248,58 @@ class SurveyFlowTests(unittest.TestCase):
         self.assertIn('80.0%', detail)
         self.assertIn('Orange 75% · Red 25% of 8 mangrove tiles', detail)
 
+    def test_sites_page_lists_sites_with_latest_survey(self):
+        response = self.post()
+        survey_id = int(response.location.rsplit('/', 1)[1])
+        html = self.client.get('/sites').get_data(as_text=True)
+        site = next(s for s in self.store.site_overview() if s['site_id'] == 1)
+        self.assertEqual(site['last_survey_id'], survey_id)
+        self.assertEqual(site['last_survey_status'], 'pending')
+        self.assertIn(site['site_name'], html)
+        self.assertIn('Pending', html)
+        self.assertIn('/surveys/new?site_id=1', html)
+        process_next(self.app, self.store, lambda path: dict(prediction(path), tiles={'Non-Mangrove': 1, 'orange': 3}), MODELS)
+        site = next(s for s in self.store.site_overview() if s['site_id'] == 1)
+        self.assertEqual(site['latest_completed_id'], survey_id)
+        self.assertEqual({k: int(v) for k, v in site['latest_tiles'].items()}, {'Non-Mangrove': 1, 'orange': 3})
+        html = self.client.get('/sites').get_data(as_text=True)
+        self.assertIn('Orange 100%', html)
+        self.assertIn('75% of imaged tiles are mangrove', html)
+
+    def test_site_detail_shows_latest_composition_and_history(self):
+        response = self.post()
+        process_next(self.app, self.store, lambda path: dict(prediction(path), tiles={'orange': 3, 'red': 1}), MODELS)
+        page = self.client.get('/sites/1')
+        self.assertEqual(page.status_code, 200)
+        html = page.get_data(as_text=True)
+        self.assertIn('Mangrove composition', html)
+        self.assertIn('75.0%', html)
+        self.assertIn(response.location.rsplit('/', 1)[1], html)
+        self.assertIn('/surveys/new?site_id=1', html)
+        self.assertEqual(self.client.get('/sites/99999').status_code, 404)
+
+    def test_sites_page_settings_and_class_colours_come_from_data(self):
+        response = self.post(self.form_data(site_id='draft:local', new_site=json.dumps({
+            'name': 'Mapped site', 'latitude': -17.6, 'longitude': 146.1})))
+        site_id = self.store.get_survey(int(response.location.rsplit('/', 1)[1]))['site_id']
+        process_next(self.app, self.store, lambda path: dict(prediction(path), tiles={'orange': 2, 'teal-ish': 1}), MODELS)
+        self.app.config.update(SITES_RECENT_DAYS=7, SITES_MAP_URL='https://maps.example/{lat},{lon}')
+        html = self.client.get('/sites').get_data(as_text=True)
+        self.assertIn('in the last 7 days', html)
+        self.assertIn('https://maps.example/-17.6', html)
+        self.assertIn('color-mix(in srgb, orange', html)
+        # A class that isn't a CSS colour name still gets a generated colour.
+        self.assertRegex(html, r'Teal-ish 33%')
+        detail = self.client.get(f'/sites/{site_id}').get_data(as_text=True)
+        self.assertIn('Orange, Teal-ish are the model', detail)
+        self.assertIn('https://maps.example/-17.6', detail)
+        self.app.config.update(SITES_MAP_URL='')
+        self.assertNotIn('maps.example', self.client.get(f'/sites/{site_id}').get_data(as_text=True))
+
+    def test_new_survey_preselects_site_from_site_page(self):
+        html = self.client.get('/surveys/new?site_id=1').get_data(as_text=True)
+        self.assertRegex(html, r'<option value="1"\s+selected>')
+
     def test_reanalysis_replaces_tile_counts(self):
         response = self.post()
         process_next(self.app, self.store, lambda path: dict(prediction(path), tiles={'orange': 3}), MODELS)

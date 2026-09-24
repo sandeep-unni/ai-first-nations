@@ -182,7 +182,8 @@ def install_survey_flow(app, store):
 
     def form_page(values=None, errors=None, status=200):
         session.setdefault('survey_csrf', secrets.token_urlsafe(32))
-        values = values if values is not None else {'survey_date': date.today().isoformat()}
+        values = values if values is not None else {'survey_date': date.today().isoformat(),
+                                                    'site_id': request.args.get('site_id', '')}
         return render_template('dashboard_ui/survey_new.html', active='surveys', demo_mode=store.demo_mode,
                                sites=store.list_sites(), values=values, errors=errors or [],
                                submission_token=values.get('submission_token') or signer.dumps(uuid4().hex),

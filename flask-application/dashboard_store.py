@@ -34,6 +34,26 @@ class DemoStore:
     def list_sites(self):
         return sorted(self.sites, key=lambda site: site['site_name'])
 
+    def site_overview(self, site_id=None):
+        rows = []
+        for site in self.list_sites():
+            if site_id is not None and site['site_id'] != site_id:
+                continue
+            surveys = self.list_surveys(site['site_id'])
+            latest = surveys[0] if surveys else {}
+            done = next((s for s in surveys if s['status'] == 'completed'), {})
+            tiles = Counter()
+            for image in done.get('images', []):
+                for result in image.get('analyses', []):
+                    if result['analysis_type'] == 'species_classification' and result['status'] in ('completed', 'skipped'):
+                        tiles.update({label: int(n) for label, n in (result.get('tile_counts') or {}).items()})
+            rows.append(dict(site, survey_count=len(surveys),
+                             image_count=sum(len(s.get('images', [])) for s in surveys),
+                             last_survey_id=latest.get('survey_id'), last_survey_date=latest.get('survey_date'),
+                             last_survey_status=latest.get('status'), latest_completed_id=done.get('survey_id'),
+                             latest_completed_date=done.get('survey_date'), latest_tiles=dict(tiles)))
+        return rows
+
     def survey_history(self, site_id=None):
         return [dict(row, image_count=len(row.get('images', [])))
                 for row in self.list_surveys(site_id)]
@@ -107,6 +127,40 @@ class PostgresStore:
     def list_sites(self):
         with self._connect() as conn:
             return conn.execute('select site_id, site_name, region, state from site order by site_name').fetchall()
+
+    def site_overview(self, site_id=None):
+        where = 'where s.site_id = %s' if site_id is not None else ''
+        with self._connect() as conn:
+            return conn.execute(f'''
+                select s.site_id, s.site_code, s.site_name, s.region, s.state, s.country,
+                       s.latitude, s.longitude, s.description,
+                       (select count(*) from survey v where v.site_id=s.site_id) as survey_count,
+                       (select count(*) from image i join survey v on v.survey_id=i.survey_id
+                        where v.site_id=s.site_id) as image_count,
+                       latest.survey_id as last_survey_id, latest.survey_date as last_survey_date,
+                       latest.status as last_survey_status,
+                       done.survey_id as latest_completed_id, done.survey_date as latest_completed_date,
+                       (select coalesce(jsonb_object_agg(x.class_label, x.tiles), '{{}}'::jsonb) from (
+                            select t.class_label, sum(t.tile_count) as tiles
+                            from (select distinct on (i.image_id) a.analysis_id
+                                  from image i join analysis_result a on a.image_id=i.image_id
+                                  where i.survey_id=done.survey_id and a.analysis_type='species_classification'
+                                    and a.status in ('completed', 'skipped')
+                                  order by i.image_id, a.analysis_id desc) a
+                            join tile_composition t on t.analysis_id=a.analysis_id
+                            group by t.class_label) x) as latest_tiles
+                from site s
+                left join lateral (
+                    select survey_id, survey_date, status from survey v where v.site_id=s.site_id
+                    order by survey_date desc, survey_id desc limit 1
+                ) latest on true
+                left join lateral (
+                    select survey_id, survey_date from survey v where v.site_id=s.site_id and v.status='completed'
+                    order by survey_date desc, survey_id desc limit 1
+                ) done on true
+                {where}
+                order by s.site_name
+            ''', (site_id,) if site_id is not None else ()).fetchall()
 
     def survey_history(self, site_id=None):
         where = 'where v.site_id = %s' if site_id is not None else ''
