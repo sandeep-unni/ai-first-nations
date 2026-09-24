@@ -1,0 +1,38 @@
+{% extends "dashboard_ui/base.html" %}
+{% block title %}{{ survey.survey_name }} · AI First Nations{% endblock %}
+{% block page_title %}{{ survey.survey_name or 'Survey' }}{% endblock %}
+{% block page_subtitle %}{{ survey.site_name }} · {{ survey.survey_date }}{% endblock %}
+{% block body %}
+<div class="page-actions"><a class="back-link" href="{{ url_for('surveys', site_id=survey.site_id) }}">← All surveys at this site</a><a class="btn" href="{{ url_for('survey_step_1') }}">+ New survey</a></div>
+<section class="card"><div class="detail-grid"><div><small>Monitoring site</small><strong>{{ survey.site_name }}</strong></div><div><small>Survey date</small><strong>{{ survey.survey_date }}</strong></div><div><small>Images</small><strong>{{ survey.images|length }}</strong></div><div><small>Status</small><strong>{{ 'Pending analysis' if survey.status == 'pending' else survey.status|capitalize }}</strong></div></div>
+{% if survey.notes %}<h3 class="notes-heading">Field notes</h3><p class="field-notes">{{ survey.notes }}</p>{% endif %}
+{% if survey.status in ['pending', 'processing'] %}<div id="analysis-progress" class="info-box survey-progress" data-progress-url="{{ url_for('survey_progress', survey_id=survey.survey_id) }}">
+<p>Your images are saved.</p>
+<p id="analysis-progress-label" role="status" aria-live="polite">{{ 'Waiting for analysis to start.' if survey.status == 'pending' else 'Analysing images…' }} {{ stats.completed + stats.failed }} of {{ survey.images|length }} processed.</p>
+<progress id="analysis-progress-bar" max="{{ survey.images|length or 1 }}" value="{{ stats.completed + stats.failed }}" aria-labelledby="analysis-progress-label"></progress>
+<p id="analysis-progress-note" class="muted">Results will appear automatically when analysis finishes.</p>
+</div>
+<script src="{{ url_for('static', filename='dashboard/survey.js') }}" defer></script>
+{% elif survey.status == 'failed' %}<div class="flash error" role="alert">Analysis could not finish for all images. Your originals and completed results are saved.</div>
+<form method="post" action="{{ url_for('retry_survey', survey_id=survey.survey_id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn" type="submit">Retry unfinished analysis</button></form>
+{% endif %}</section>
+<section class="card"><h2>Survey results</h2>
+<div class="detail-grid"><div><small>Images analysed</small><strong>{{ stats.completed }} / {{ survey.images|length }}</strong></div><div><small>Mangrove detected</small><strong>{{ stats.mangrove }}</strong></div><div><small>Failed images</small><strong>{{ stats.failed }}</strong></div><div><small>Mean class confidence</small><strong>{{ ('%.1f%%'|format(stats.mean_confidence * 100)) if stats.mean_confidence is not none else '—' }}</strong></div></div>
+{% if stats.classes %}<h3>Predicted colour classes</h3><ul>{% for label, count in stats.classes|dictsort %}<li>{{ label|capitalize }}: {{ count }} image{{ '' if count == 1 else 's' }}</li>{% endfor %}</ul>{% endif %}
+<p class="muted">Counts describe image predictions. Overlapping drone photos do not measure unique trees or ground coverage. Orange, red and yellow are the model's colour classes.</p></section>
+<section class="card"><div class="card-head"><h2>Drone images</h2><span class="muted">{{ survey.images|length }} images in this survey</span></div>
+<div class="survey-gallery">{% for image in survey.images %}<article class="image-card">
+{% if image.local_url and image.file_type|lower in ['jpg', 'jpeg', 'png'] %}<a href="{{ image.local_url }}" target="_blank" rel="noopener"><img loading="lazy" src="{{ image.local_url }}" alt="{{ image.filename }}"></a>{% else %}<div class="image-placeholder">{{ 'TIFF original' if image.local_url else 'Stored in ' ~ image.storage_provider }}</div>{% endif %}
+<div class="image-card-body"><strong>{{ image.filename }}</strong><p class="muted">{% if image.width and image.height %}{{ image.width }} × {{ image.height }} · {% endif %}{% if image.file_size_bytes %}{{ '%.1f'|format(image.file_size_bytes / 1048576) }} MB{% endif %}</p>
+{% if image.camera_model %}<p>Camera: {{ image.camera_model }}</p>{% endif %}
+{% if image.latitude is not none and image.longitude is not none and image.latitude is defined and image.longitude is defined %}<p>GPS: {{ image.latitude }}, {{ image.longitude }}</p>{% endif %}
+{% for result in image.analyses|default([]) %}<p><strong>{{ 'Mangrove detection' if result.analysis_type == 'binary_detection' else 'Colour class' }}:</strong>
+{% if result.status == 'completed' %}{{ result.predicted_class }} · {{ '%.1f'|format(result.confidence * 100) }}% confidence
+{% elif result.status == 'skipped' %}Not applicable (no mangrove detected)
+{% else %}{{ result.error_message or 'Pending' }}{% endif %}</p>
+{% if result.probabilities %}<details><summary>Class probabilities</summary><ul>{% for label, probability in result.probabilities.items() %}<li>{{ label }}: {{ '%.1f'|format(probability * 100) }}%</li>{% endfor %}</ul></details>{% endif %}
+{% endfor %}
+{% if image.source_metadata %}<details><summary>Saved image metadata</summary><pre class="field-notes">{{ image.source_metadata|tojson(indent=2) }}</pre></details>{% endif %}
+{% if image.local_url %}<a class="btn small" href="{{ image.local_url }}?download=1">Download original</a>{% elif image.storage_url and image.storage_url.startswith(('https://', 'http://')) %}<a class="btn small" href="{{ image.storage_url }}" target="_blank" rel="noopener noreferrer">Open stored image ↗</a>{% else %}<span class="muted">Original is available at its storage location.</span>{% endif %}
+</div></article>{% else %}<p class="empty">No image records are attached to this survey.</p>{% endfor %}</div></section>
+{% endblock %}

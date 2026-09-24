@@ -1,0 +1,89 @@
+{% extends "dashboard_ui/base.html" %}
+{% block title %}Create Survey · AI First Nations{% endblock %}
+{% block page_title %}Create Survey{% endblock %}
+{% block page_subtitle %}Keep all the images from a drone visit together, under one site.{% endblock %}
+{% block body %}
+<a class="back-link" href="{{ url_for('surveys') }}">← Survey history</a>
+{% if errors %}<div class="flash error" role="alert"><strong>Check your survey</strong><ul>{% for error in errors %}<li>{{ error }}</li>{% endfor %}</ul><p>Please reselect your images before submitting again.</p></div>{% endif %}
+<form id="survey-form" class="survey-form" method="post" enctype="multipart/form-data"
+      data-max-images="{{ max_images }}" data-max-image-bytes="{{ max_image_mb * 1024 * 1024 }}" data-max-total-bytes="{{ max_total_mb * 1024 * 1024 }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="submission_token" value="{{ submission_token }}">
+    <input type="hidden" name="new_site" id="new-site-payload" value="{{ values.get('new_site', '') }}">
+    <ol class="survey-steps" aria-label="Create survey progress">
+        <li aria-current="step"><span>1</span> Site &amp; details</li><li><span>2</span> Drone images</li><li><span>3</span> Review &amp; save</li>
+    </ol>
+    <section class="card survey-stage" data-stage="0" aria-labelledby="details-heading">
+        <h2 id="details-heading" tabindex="-1">Where and when was this survey?</h2>
+        <p class="muted">Choose an existing site or create a new monitoring location.</p>
+        <div class="form-grid">
+            <label for="site_id">Monitoring site
+                <select name="site_id" id="site_id" required><option value="">Select a site</option>{% for site in sites %}<option value="{{ site.site_id }}" {% if values.get('site_id', '')|string == site.site_id|string %}selected{% endif %}>{{ site.site_name }}{% if site.region %} · {{ site.region }}{% endif %}</option>{% endfor %}</select>
+            </label>
+            <div class="js-only" hidden>
+                <button type="button" id="new-site-button" class="btn small" aria-expanded="false" aria-controls="new-site-fields">+ Create new site</button>
+                <p id="site-draft-status" class="muted" role="status"></p>
+            </div>
+            <fieldset id="new-site-fields" class="new-site-fields" hidden disabled>
+                <legend>New monitoring site</legend>
+                <p class="muted">This site will be saved together with your survey.</p>
+                <div class="form-grid">
+                    <label>Site name<input id="new-site-name" maxlength="255" required></label>
+                    <div class="form-row"><label>Region<input id="new-site-region" maxlength="255"></label><label>State / territory<input id="new-site-state" maxlength="100"></label></div>
+                    <label>Country<input id="new-site-country" maxlength="100" value="Australia"></label>
+                    <div class="form-row"><label>Latitude (optional)<input id="new-site-latitude" type="number" min="-90" max="90" step="any" placeholder="e.g. -12.46"></label><label>Longitude (optional)<input id="new-site-longitude" type="number" min="-180" max="180" step="any" placeholder="e.g. 130.84"></label></div>
+                    <label>Site description<textarea id="new-site-description" maxlength="10000" rows="3"></textarea></label>
+                </div>
+                <p id="new-site-error" role="alert" class="flash error" hidden></p>
+                <div class="form-actions"><button type="button" class="btn" id="cancel-new-site">Cancel</button><button type="button" class="btn primary" id="save-site-draft">Use this site</button></div>
+            </fieldset>
+            <noscript><p>Creating a new site and previewing image metadata require JavaScript. Existing sites can still be used.</p></noscript>
+            <div class="form-row">
+                <label for="survey_name">Survey name<input id="survey_name" name="survey_name" required maxlength="255" placeholder="e.g. September drone survey" value="{{ values.get('survey_name', '') }}"></label>
+                <label for="survey_date">Survey date<input id="survey_date" name="survey_date" type="date" required value="{{ values.get('survey_date', '') }}"></label>
+            </div>
+            <label for="notes">Field notes <span class="muted">Optional · conditions, flight details or observations</span><textarea id="notes" name="notes" rows="4" maxlength="10000">{{ values.get('notes', '') }}</textarea></label>
+        </div>
+        <div class="form-actions js-only" hidden><a href="{{ url_for('surveys') }}">Cancel</a><button type="button" class="btn primary" data-next>Continue to images →</button></div>
+    </section>
+    <section class="card survey-stage" data-stage="1" aria-labelledby="images-heading">
+        <h2 id="images-heading" tabindex="-1">Add your drone images</h2>
+        <p>Upload multiple images from this visit. They will all belong to the same survey and site.</p>
+        <div id="image-drop-zone" class="batch-drop-zone">
+            <span class="upload-icon" aria-hidden="true">↥</span>
+            <label for="survey-images">Choose drone images</label>
+            <input id="survey-images" type="file" name="images" accept=".jpg,.jpeg,.png,.tif,.tiff" multiple required aria-describedby="upload-limits">
+            <p class="muted">Select several files at once, or drag them here.</p>
+        </div>
+        <p id="upload-limits" class="muted">JPG, PNG or TIFF · Up to {{ max_images }} images · {{ max_image_mb }} MB per image · {{ max_total_mb }} MB per batch</p>
+        <p id="batch-error" class="flash error" role="alert" hidden></p>
+        <div class="card-head"><strong id="batch-count" aria-live="polite">No images selected</strong><button id="clear-images" type="button" class="btn small js-only" hidden>Clear all</button></div>
+        <ul id="image-selection" class="image-selection"></ul>
+        <section id="metadata-overview" class="metadata-overview js-only" hidden>
+            <h3>Image metadata</h3>
+            <p id="metadata-progress" role="status" aria-live="polite">Choose images to read their available metadata.</p>
+            <p class="muted">Previewed on this device and extracted again from the originals when saved. Missing tags stay blank. Camera coordinates describe the photo location, not a site boundary.</p>
+            <button type="button" id="download-metadata" class="btn small" disabled>Download image metadata</button>
+        </section>
+        <div id="image-storage-note" class="info-box">Original images and their available metadata will be saved with this survey.</div>
+        <div class="form-actions js-only" hidden><button type="button" class="btn" data-back>← Back</button><button type="button" class="btn primary" data-next>Review survey →</button></div>
+    </section>
+    <section class="card survey-stage" data-stage="2" aria-labelledby="review-heading">
+        <h2 id="review-heading" tabindex="-1">Review your survey</h2>
+        <dl id="survey-review" class="survey-review js-only" hidden></dl>
+        <div id="draft-review-notice" class="info-box" hidden>Your new monitoring site will be created when you save this survey.</div>
+        <button type="button" id="download-survey-draft" class="btn js-only" hidden>Download survey draft</button>
+        <p id="existing-site-save-note">Your images will be saved and analysed automatically. You can follow progress and view results on the survey page.</p>
+        <div class="form-actions"><button type="button" class="btn js-only" data-back hidden>← Back</button><button id="save-survey" class="btn primary" type="submit">Save and analyse survey</button></div>
+        <div id="upload-progress" class="survey-progress" hidden>
+            <p id="upload-progress-label" role="status" aria-live="polite">Uploading images…</p>
+            <progress id="upload-progress-bar" max="100" value="0" aria-labelledby="upload-progress-label"></progress>
+            <p class="muted">Please keep this page open while your images are saved.</p>
+        </div>
+        <p id="upload-error" class="flash error" role="alert" hidden></p>
+    </section>
+</form>
+<script src="{{ url_for('static', filename='dashboard/metadata.js') }}" defer></script>
+<script src="{{ url_for('static', filename='dashboard/site-drafts.js') }}" defer></script>
+<script src="{{ url_for('static', filename='dashboard/survey.js') }}" defer></script>
+{% endblock %}

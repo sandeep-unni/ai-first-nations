@@ -1,0 +1,346 @@
+"""Run with: .venv/bin/python -m unittest discover -s tests -v.
+
+Set TEST_DATABASE_URL to a disposable local PostgreSQL database to also exercise
+real transactions in isolated schemas. Never point this at the shared database.
+"""
+from datetime import date, timedelta
+from io import BytesIO
+import os
+import json
+from pathlib import Path
+import re
+import sys
+from tempfile import TemporaryDirectory
+import unittest
+from unittest.mock import patch
+from uuid import uuid4
+
+from flask import Flask
+from PIL import Image
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'flask-application'))
+from dashboard import install_dashboard
+from dashboard_store import DemoStore, PostgresStore
+from survey_processing import process_next, survey_statistics
+from survey_flow import image_metadata
+
+MODELS = {task: dict(name='Test ' + task, version='test-v1', path='test.pth')
+          for task in ('binary_detection', 'species_classification')}
+
+
+def prediction(path):
+    return {'binary': {'prediction': 'Mangrove', 'confidence': .9, 'probs': [.1, .9]},
+            'multi_class': {'predicted_class': 'orange', 'confidence': .8,
+                            'probabilities': {'orange': .8, 'red': .1, 'yellow': .1}}}
+
+
+def image_file(name='drone.jpg', format='JPEG'):
+    data = BytesIO()
+    Image.new('RGB', (24, 16), (35, 110, 60)).save(data, format=format)
+    data.seek(0)
+    return data, name
+
+
+class SurveyFlowTests(unittest.TestCase):
+    def make_store(self):
+        return DemoStore()
+
+    def setUp(self):
+        self.directory = TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.store = self.make_store()
+        self.app = Flask(__name__, template_folder=str(ROOT / 'flask-application/templates'))
+        self.app.config.update(TESTING=True, SECRET_KEY='test-secret', UPLOAD_FOLDER=self.directory.name,
+                               MAX_CONTENT_LENGTH=50 * 1024 * 1024)
+        install_dashboard(self.app, self.store)
+        self.client = self.app.test_client()
+        self.initial_count = len(self.store.survey_history())
+
+    def form_data(self, **changes):
+        response = self.client.get('/surveys/new')
+        self.assertEqual(response.status_code, 200)
+        html = response.get_data(as_text=True)
+        data = {field: re.search(r'name="' + field + r'" value="([^"]+)"', html).group(1)
+                for field in ('csrf_token', 'submission_token')}
+        data.update(site_id='1', survey_name='Morning drone flight', survey_date=date.today().isoformat(), notes='Clear skies')
+        data.update(changes)
+        return data
+
+    def post(self, data=None, files=None):
+        if data is None:
+            data = self.form_data()
+        return self.client.post('/surveys/new', data=dict(data, images=files if files is not None else [image_file()]))
+
+    def saved_files(self):
+        return list(Path(self.directory.name).rglob('*.*'))
+
+    def test_multiple_images_same_survey_duplicate_names_and_second_visit(self):
+        response = self.post(files=[image_file(), image_file(), image_file('map.tif', 'TIFF')])
+        self.assertEqual(response.status_code, 303)
+        survey_id = int(response.location.rsplit('/', 1)[1])
+        survey = self.store.get_survey(survey_id)
+        self.assertEqual(survey['site_id'], 1)
+        self.assertEqual(survey['status'], 'pending')
+        self.assertEqual(len(survey['images']), 3)
+        self.assertEqual(len({i['storage_item_id'] for i in survey['images']}), 3)
+        detail = self.client.get(response.location)
+        self.assertEqual(detail.status_code, 200)
+        self.assertIn(b'Pending analysis', detail.data)
+        for image in survey['images']:
+            with self.client.get(image['storage_url']) as response_image:
+                self.assertEqual(response_image.status_code, 200)
+        second = self.post()
+        self.assertEqual(second.status_code, 303)
+        self.assertNotEqual(second.location, response.location)
+        self.assertEqual(len(self.store.survey_history()), self.initial_count + 2)
+        self.assertEqual(self.client.get('/surveys?site_id=1').status_code, 200)
+
+    def test_repeated_submission_does_not_duplicate_records_or_files(self):
+        data = self.form_data()
+        first = self.post(data)
+        second = self.post(data)
+        self.assertEqual(first.location, second.location)
+        self.assertEqual(len(self.store.survey_history()), self.initial_count + 1)
+        self.assertEqual(len(self.saved_files()), 1)
+
+    def test_missing_images_and_invalid_metadata(self):
+        for changes in ({'site_id': '99999'}, {'survey_name': ' '}, {'survey_date': 'invalid'},
+                        {'survey_date': (date.today() + timedelta(days=1)).isoformat()}):
+            with self.subTest(changes=changes):
+                self.assertEqual(self.post(self.form_data(**changes)).status_code, 400)
+        self.assertEqual(self.post(files=[]).status_code, 400)
+        self.assertEqual(len(self.store.survey_history()), self.initial_count)
+        self.assertFalse(self.saved_files())
+
+    def test_invalid_image_rolls_back_whole_batch(self):
+        response = self.post(files=[image_file(), (BytesIO(b'not an image'), 'broken.png')])
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(len(self.store.survey_history()), self.initial_count)
+        self.assertFalse(self.saved_files())
+
+    def test_content_extension_mismatch_is_rejected(self):
+        self.assertEqual(self.post(files=[image_file('fake.png', 'JPEG')]).status_code, 400)
+        self.assertFalse(self.saved_files())
+
+    def test_dji_multi_picture_jpeg_is_preserved(self):
+        data = BytesIO()
+        Image.new('RGB', (24, 16)).save(data, 'MPO', save_all=True,
+                                      append_images=[Image.new('RGB', (12, 8))])
+        original = data.getvalue()
+        data.seek(0)
+        response = self.post(files=[(data, 'DJI_original.JPG')])
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(self.saved_files()[0].read_bytes(), original)
+
+    def test_file_count_and_individual_size_limits(self):
+        self.app.config['SURVEY_MAX_IMAGES'] = 1
+        self.assertEqual(self.post(files=[image_file(), image_file()]).status_code, 400)
+        self.app.config['SURVEY_MAX_IMAGE_BYTES'] = 10
+        self.assertEqual(self.post().status_code, 400)
+        self.assertFalse(self.saved_files())
+
+    def test_request_limit_has_friendly_error(self):
+        self.app.config['SURVEY_MAX_REQUEST_BYTES'] = 100
+        response = self.post()
+        self.assertEqual(response.status_code, 413)
+        self.assertIn(b'Choose a smaller batch', response.data)
+
+    def test_csrf_and_expired_submission_are_rejected(self):
+        self.assertEqual(self.post(self.form_data(csrf_token='bad')).status_code, 400)
+        self.assertEqual(self.post(self.form_data(submission_token='bad')).status_code, 400)
+        self.assertFalse(self.saved_files())
+
+    def test_database_failure_cleans_files_and_preserves_form(self):
+        with patch.object(self.store, 'create_survey', side_effect=RuntimeError('Database unavailable')), self.assertLogs(self.app.logger, level='ERROR'):
+            response = self.post()
+        self.assertEqual(response.status_code, 503)
+        self.assertIn(b'Morning drone flight', response.data)
+        self.assertFalse(self.saved_files())
+
+    def test_lost_commit_acknowledgement_does_not_delete_originals(self):
+        create = self.store.create_survey
+        def lost_acknowledgement(details, images):
+            create(details, images)
+            raise ConnectionError('connection lost after commit')
+        with patch.object(self.store, 'create_survey', side_effect=lost_acknowledgement), self.assertLogs(self.app.logger, level='ERROR'):
+            response = self.post()
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(len(self.saved_files()), 1)
+        self.assertEqual(self.client.get(response.location).status_code, 200)
+
+    def test_unknown_survey_and_path_traversal(self):
+        self.assertEqual(self.client.get('/surveys/999999').status_code, 404)
+        self.assertEqual(self.client.get('/survey-images/../../.env').status_code, 404)
+
+    def test_new_site_saved_once_with_survey(self):
+        count = len(self.store.list_sites())
+        data = self.form_data(site_id='draft:local', new_site=json.dumps({
+            'name': 'New mangrove site', 'latitude': -17.6, 'longitude': 146.1, 'country': 'Australia'}))
+        response = self.post(data)
+        self.assertEqual(response.status_code, 303)
+        survey = self.store.get_survey(int(response.location.rsplit('/', 1)[1]))
+        self.assertEqual(survey['site_name'], 'New mangrove site')
+        self.assertEqual(self.post(data).location, response.location)
+        self.assertEqual(len(self.store.list_sites()), count + 1)
+
+    def test_invalid_new_site_creates_nothing(self):
+        count = len(self.store.list_sites())
+        for site in ({'name': ''}, {'name': 'X', 'latitude': 10},
+                     {'name': 'X', 'latitude': 91, 'longitude': 10},
+                     {'name': 'X', 'latitude': float('nan'), 'longitude': 10}, [], None):
+            with self.subTest(site=site):
+                response = self.post(self.form_data(new_site=json.dumps(site)))
+                self.assertEqual(response.status_code, 400)
+        self.assertEqual(len(self.store.list_sites()), count)
+        self.assertFalse(self.saved_files())
+
+    def test_server_extracts_and_persists_metadata(self):
+        output = BytesIO()
+        exif = Image.Exif()
+        exif[272] = 'DJI test camera'
+        exif[270] = 'DJI description\x00'
+        exif[34665] = {36867: '2026:09:14 10:30:00'}
+        xmp = b'''<x:xmpmeta xmlns:x="adobe:ns:meta/" xmlns:d="http://www.dji.com/drone-dji/1.0/" xmlns:xmp="http://ns.adobe.com/xap/1.0/">
+            <d:Description d:GpsLatitude="-17.6" d:GpsLongitude="146.1" d:RelativeAltitude="12.2" xmp:CreateDate="2026-09-14T10:30:00+10:00"/></x:xmpmeta>'''
+        Image.new('RGB', (24, 16)).save(output, 'JPEG', exif=exif, xmp=xmp)
+        original = output.getvalue()
+        output.seek(0)
+        response = self.post(files=[(output, 'metadata.jpg')])
+        self.assertEqual(response.status_code, 303)
+        image = self.store.get_survey(int(response.location.rsplit('/', 1)[1]))['images'][0]
+        self.assertAlmostEqual(float(image['latitude']), -17.6)
+        self.assertAlmostEqual(float(image['relative_altitude']), 12.2)
+        self.assertEqual(image['camera_model'], 'DJI test camera')
+        self.assertEqual(image['source_metadata']['exif']['ImageDescription'], 'DJI description')
+        self.assertEqual(image['capture_date'].year, 2026)
+        self.assertEqual(image['source_metadata']['exif']['DateTimeOriginal'], '2026:09:14 10:30:00')
+        self.assertEqual(self.saved_files()[0].read_bytes(), original)
+
+    def test_analysis_stores_results_and_probabilities(self):
+        response = self.post(files=[image_file(), image_file()])
+        self.assertTrue(process_next(self.app, self.store, prediction, MODELS))
+        survey = self.store.get_survey(int(response.location.rsplit('/', 1)[1]))
+        self.assertEqual(survey['status'], 'completed')
+        self.assertEqual(survey_statistics(survey)['classes'], {'orange': 2})
+        self.assertEqual(survey_statistics(survey)['completed'], 2)
+        for image in survey['images']:
+            self.assertEqual(len(image['analyses']), 2)
+            classification = next(r for r in image['analyses'] if r['analysis_type'] == 'species_classification')
+            self.assertAlmostEqual(float(classification['probabilities']['orange']), .8)
+        self.assertEqual(self.client.get(response.location).status_code, 200)
+        self.assertFalse(process_next(self.app, self.store, prediction, MODELS))
+
+    def test_non_mangrove_skips_classification(self):
+        response = self.post()
+        def non_mangrove(path):
+            return {'binary': {'prediction': 'Non-Mangrove', 'confidence': .9, 'probs': [.9, .1]}, 'multi_class': None}
+        process_next(self.app, self.store, non_mangrove, MODELS)
+        survey = self.store.get_survey(int(response.location.rsplit('/', 1)[1]))
+        self.assertEqual(survey['status'], 'completed')
+        self.assertEqual(survey_statistics(survey)['classes'], {})
+        self.assertEqual(survey_statistics(survey)['completed'], 1)
+
+    def test_partial_failure_retry_keeps_completed_results(self):
+        data = self.form_data()
+        response = self.post(data, files=[image_file(), image_file()])
+        calls = []
+        def failing(path):
+            calls.append(path)
+            if len(calls) == 2:
+                raise RuntimeError('inference failed')
+            return prediction(path)
+        with self.assertLogs(self.app.logger, level='ERROR'):
+            process_next(self.app, self.store, failing, MODELS)
+        survey_id = int(response.location.rsplit('/', 1)[1])
+        self.assertEqual(self.store.get_survey(survey_id)['status'], 'failed')
+        self.assertEqual(len(self.saved_files()), 2)
+        self.assertEqual(self.client.post(response.location + '/retry', data={'csrf_token': 'bad'}).status_code, 400)
+        self.assertEqual(self.client.post(response.location + '/retry', data={'csrf_token': data['csrf_token']}).status_code, 303)
+        with patch(__name__ + '.prediction', wraps=prediction) as predictor:
+            process_next(self.app, self.store, predictor, MODELS)
+            self.assertEqual(predictor.call_count, 1)
+        survey = self.store.get_survey(survey_id)
+        self.assertEqual(survey['status'], 'completed')
+        self.assertEqual(survey_statistics(survey)['completed'], 2)
+        self.assertEqual(survey_statistics(survey)['failed'], 0)
+
+    def test_restart_resumes_processing_and_lock_excludes_second_consumer(self):
+        response = self.post()
+        survey_id = int(response.location.rsplit('/', 1)[1])
+        self.store.set_status(survey_id, 'processing')
+        with self.store.next_survey(self.app.config['SURVEY_STORAGE_ID']) as claimed:
+            self.assertEqual(claimed, survey_id)
+            self.assertFalse(process_next(self.app, self.store, prediction, MODELS))
+        self.assertTrue(process_next(self.app, self.store, prediction, MODELS))
+        self.assertEqual(self.store.get_survey(survey_id)['status'], 'completed')
+
+    def test_other_storage_is_not_processed(self):
+        self.post()
+        self.app.config['SURVEY_STORAGE_ID'] = 'another-computer'
+        self.assertFalse(process_next(self.app, self.store, prediction, MODELS))
+
+    def test_metadata_without_timezone_does_not_invent_timestamp(self):
+        exif = Image.Exif()
+        exif[34665] = {36867: '2026:09:14 10:30:00'}
+        data = BytesIO()
+        Image.new('RGB', (10, 10)).save(data, 'JPEG', exif=exif)
+        data.seek(0)
+        with Image.open(data) as image:
+            metadata = image_metadata(image)
+        self.assertNotIn('capture_date', metadata)
+        self.assertEqual(metadata['source_metadata']['exif']['DateTimeOriginal'], '2026:09:14 10:30:00')
+
+    def test_xml_entities_are_not_expanded(self):
+        image = Image.new('RGB', (10, 10))
+        image.info['xmp'] = b'<!DOCTYPE x [<!ENTITY e SYSTEM "file:///etc/passwd">]><x>&e;</x>'
+        metadata = image_metadata(image)
+        self.assertIn('xmp_warning', metadata['source_metadata'])
+
+
+@unittest.skipUnless(os.getenv('TEST_DATABASE_URL'), 'Set TEST_DATABASE_URL for local PostgreSQL integration tests')
+class PostgresSurveyFlowTests(SurveyFlowTests):
+    def make_store(self):
+        import psycopg
+        from psycopg.conninfo import make_conninfo
+        from psycopg import sql
+        url = os.environ['TEST_DATABASE_URL']
+        schema = 'test_surveys_' + uuid4().hex
+        with psycopg.connect(url, autocommit=True) as conn:
+            conn.execute(sql.SQL('create schema {}').format(sql.Identifier(schema)))
+        def cleanup():
+            with psycopg.connect(url, autocommit=True) as conn:
+                conn.execute(sql.SQL('drop schema {} cascade').format(sql.Identifier(schema)))
+        self.addCleanup(cleanup)
+        url = make_conninfo(url, options=f'-c search_path={schema}')
+        with psycopg.connect(url) as conn:
+            conn.execute((ROOT / 'init-db/01-schema.sql').read_text())
+            conn.execute("insert into site (site_code,site_name) values ('TEST','Test monitoring site')")
+        return PostgresStore(url)
+
+    def test_database_transaction_rolls_back_survey_and_first_image(self):
+        details = dict(survey_code='TEST-ROLLBACK', site_id=1, survey_name='Rollback test',
+                       survey_date=date.today(), survey_type='drone imagery', notes='')
+        image = dict(filename='drone.jpg', file_type='jpg', file_size_bytes=20, storage_provider='local',
+                     storage_container_id='test', storage_item_id='first', storage_url='/first',
+                     width=20, height=20, band_count=3)
+        with self.assertRaises(Exception):
+            self.store.create_survey(details, [image, dict(image, storage_item_id='second', width='not-an-integer')])
+        self.assertEqual(self.store.survey_history(), [])
+        with self.store._connect() as conn:
+            self.assertEqual(conn.execute('select count(*) as n from image').fetchone()['n'], 0)
+
+    def test_database_transaction_rolls_back_new_site(self):
+        from survey_flow import new_site_details
+        site = new_site_details('{"name":"Rollback site"}')
+        site['site_code'] = 'SITE-ROLLBACK'
+        details = dict(survey_code='TEST-SITE-ROLLBACK', new_site=site, site_id=None,
+                       survey_name='Rollback', survey_date=date.today(), survey_type='drone imagery', notes='')
+        with self.assertRaises(Exception):
+            self.store.create_survey(details, [{}])
+        self.assertEqual(len(self.store.list_sites()), 1)
+        self.assertEqual(self.store.survey_history(), [])
+
+
+if __name__ == '__main__':
+    unittest.main()

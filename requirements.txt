@@ -1,4 +1,4 @@
-flask
+flask>=3.1,<4
 joblib
 matplotlib
 numpy
@@ -8,9 +8,15 @@ scikit-learn
 seaborn
 tensorflow
 tifffile
-torch
-torchvision
+# CPU wheels keep the Railway service free of CUDA runtime dependencies.
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.10.0+cpu; sys_platform == 'linux'
+torchvision==0.25.0+cpu; sys_platform == 'linux'
+torch==2.10.0; sys_platform != 'linux'
+torchvision==0.25.0; sys_platform != 'linux'
 tqdm
 psycopg[binary]
 SQLAlchemy
 python-dotenv
+defusedxml
+gunicorn

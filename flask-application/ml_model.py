@@ -5,7 +5,6 @@ import numpy as np
 import torch
 import torch.nn as nn
 from PIL import Image
-from sklearn.metrics import classification_report, confusion_matrix
 from torch.utils.data import DataLoader, WeightedRandomSampler
 from torchvision import datasets, transforms, models
 from tqdm import tqdm
@@ -18,8 +17,8 @@ DATASET_PATH = PROJECT_ROOT / 'TrainingData'
 TESTING_DIR = PROJECT_ROOT / 'test'
 
 
-def bmodel(num_classes=3, freeze_base=True):
-    model = models.efficientnet_b0(weights='IMAGENET1K_V1')
+def bmodel(num_classes=3, freeze_base=True, pretrained=True):
+    model = models.efficientnet_b0(weights='IMAGENET1K_V1' if pretrained else None)
     if freeze_base:
         for param in model.parameters():
             param.requires_grad = False
@@ -121,14 +120,14 @@ def _load_image_as_pil(image_path):
         raise IOError(f"Cannot open image '{image_path}': {e}")
 
 
-def predicting_test(image_path, model, transform, mangrove_type, gpu, batch_size=64):
+def predicting_test(image_path, model, transform, mangrove_type, gpu, batch_size=8):
+    from binary_detector import tile_batches
     img = _load_image_as_pil(image_path)
-    tiles, _ = extract_test(img, transform, 512, 64)
     all_probs = []
 
-    with torch.no_grad():
-        for i in range(0, len(tiles), batch_size):
-            batch = tiles[i:i + batch_size].to(gpu)
+    with img, torch.inference_mode():
+        for batch in tile_batches(img, transform, batch_size=batch_size):
+            batch = batch.to(gpu)
             outputs = model(batch)
             probs = torch.softmax(outputs, dim=1)
             all_probs.append(probs.cpu().numpy())
@@ -183,9 +182,10 @@ def get_class_names():
 
 def load_model():
     gpu = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    mangrove_type = get_class_names()
+    # The bundled checkpoint was trained with ImageFolder's alphabetical order.
+    mangrove_type = ['orange', 'red', 'yellow']
 
-    model = bmodel(num_classes=len(mangrove_type), freeze_base=True).to(gpu)
+    model = bmodel(num_classes=len(mangrove_type), freeze_base=True, pretrained=False).to(gpu)
 
     if not MODEL_PATH.exists():
         raise FileNotFoundError(f"Model file not found: {MODEL_PATH}")
@@ -392,24 +392,21 @@ def predict_combined(image_path, binary_model, model, mangrove_type, gpu):
 
     # Step 2: If mangrove detected, run multi-class classification
     multi_class_result = None
-    if binary_result['prediction'] == 'Mangrove' and binary_result['confidence'] > 0.5:
-        try:
-            pred_class, confidence, avg_probs = predicting_test(
-                image_path=image_path,
-                model=model,
-                transform=INFERENCE_TRANSFORM,
-                mangrove_type=mangrove_type,
-                gpu=gpu
-            )
-            multi_class_result = {
-                'predicted_class': pred_class,
-                'confidence': confidence,
-                'probabilities': {
-                    mangrove_type[i]: float(avg_probs[i]) for i in range(len(mangrove_type))
-                }
+    if binary_result['prediction'] == 'Mangrove':
+        pred_class, confidence, avg_probs = predicting_test(
+            image_path=image_path,
+            model=model,
+            transform=INFERENCE_TRANSFORM,
+            mangrove_type=mangrove_type,
+            gpu=gpu
+        )
+        multi_class_result = {
+            'predicted_class': pred_class,
+            'confidence': confidence,
+            'probabilities': {
+                mangrove_type[i]: float(avg_probs[i]) for i in range(len(mangrove_type))
             }
-        except Exception as e:
-            print(f"Multi-class prediction error: {e}")
+        }
 
     return {
         'binary': binary_result,
