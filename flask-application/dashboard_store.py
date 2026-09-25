@@ -280,7 +280,8 @@ class PostgresStore:
                      image['storage_item_id'], image['storage_url'], image['width'],
                      image['height'], image['band_count'], sequence, image.get('capture_date'),
                      image.get('latitude'), image.get('longitude'), image.get('absolute_altitude'),
-                     image.get('relative_altitude'), image.get('positioning_status'), image.get('camera_model'),
+                     image.get('relative_altitude'), image.get('positioning_status'), image.get('rtk_std_latitude'), 
+                     image.get('rtk_std_longitude'), image.get('rtk_std_height'), image.get('camera_model'),
                      Jsonb(image.get('source_metadata', {}))))
         return survey_id, True
 
