@@ -25,4 +25,13 @@
 {% for survey in surveys %}<tr><td><a href="{{ url_for('survey_detail', survey_id=survey.survey_id) }}">{{ survey.survey_name or survey.survey_code }}</a></td><td><code class="site-survey-id">{{ survey.survey_code or survey.survey_id }}</code></td><td>{{ survey.survey_date }}</td><td>{{ survey.image_count }}</td><td><span class="status">{{ status_label(survey.status) }}</span></td></tr>
 {% else %}<tr><td colspan="5" class="empty">No surveys yet. Create a survey to add this site's first drone images.</td></tr>{% endfor %}
 </tbody></table></div></section>
+<section class="card danger-zone" aria-labelledby="delete-site-heading"><div class="danger-zone-copy"><h2 id="delete-site-heading">Delete site</h2>
+<p class="muted">Permanently remove this monitoring site.</p></div>
+{% if site.survey_count %}<p class="muted danger-zone-note">Delete this site's {{ site.survey_count }} survey{{ '' if site.survey_count == 1 else 's' }} before deleting the site.</p>
+{% else %}<form method="post" class="delete-survey-form" action="{{ url_for('delete_site', site_id=site.site_id) }}">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+<label class="delete-confirm"><input type="checkbox" name="confirm" value="delete" required><span>I understand that this cannot be undone.</span></label>
+<button class="btn danger" type="submit">Delete site</button>
+</form>
+{% endif %}</section>
 {% endblock %}

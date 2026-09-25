@@ -3,9 +3,10 @@ from collections import Counter
 from datetime import date
 import hashlib
 import os
+import hmac
+import secrets
 
-from flask import abort, render_template, request, url_for
-
+from flask import (abort, flash, redirect, render_template, request, session, url_for)
 from dashboard_store import get_store
 from survey_flow import install_survey_flow
 
@@ -118,15 +119,44 @@ def install_dashboard(app, store=None):
         rows = store.site_overview(site_id)
         if not rows:
             abort(404)
+        
+        session.setdefault("site_csrf", secrets.token_urlsafe(32))
+        
         return render_template(
             "dashboard_ui/site_detail.html",
             site=site_view(rows[0], date.today()),
             surveys=store.survey_history(site_id),
+            csrf_token=session["site_csrf"],
             class_style=class_style,
             status_label=status_label,
             active="sites",
             demo_mode=store.demo_mode,
         )
+
+    @app.post("/sites/<int:site_id>/delete")
+    def delete_site(site_id):
+        supplied = request.form.get("csrf_token", "")
+        expected = session.get("site_csrf", "") or "invalid"
+
+        if not hmac.compare_digest(supplied, expected):
+            abort(400)
+        if request.form.get("confirm") != "delete":
+            abort(400)
+
+        try:
+            deleted = store.delete_site(site_id)
+        except ValueError as exc:
+            flash(str(exc), "error")
+            return redirect(
+                url_for("site_detail", site_id=site_id),
+                code=303,
+            )
+
+        if deleted is None:
+            abort(404)
+
+        flash(f"{deleted['site_name']} deleted.", "success")
+        return redirect(url_for("sites"), code=303)
 
     def summarise(analyses):
         """Aggregate per-image analyses; every task, class and label comes from the data."""

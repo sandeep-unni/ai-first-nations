@@ -158,6 +158,21 @@ class DemoStore:
         finally:
             self.processing_lock.release()
 
+def delete_site(self, site_id):
+    site = next(
+        (item for item in self.sites if item['site_id'] == site_id),
+        None,
+    )
+    if site is None:
+        return None
+    if any(survey['site_id'] == site_id for survey in self.surveys):
+        raise ValueError(
+            'Delete all surveys at this site before deleting the site.'
+        )
+
+    self.sites.remove(site)
+    return dict(site)
+
 class PostgresStore:
     demo_mode = False
 
@@ -487,6 +502,32 @@ class PostgresStore:
             conn.execute('delete from survey where survey_id=%s', (survey_id,))
 
             return dict(survey, stored_files=images)
+
+    def delete_site(self, site_id):
+        with self._connect() as conn:
+            site = conn.execute(
+                '''select site_id, site_code, site_name
+                from site where site_id=%s for update''',
+                (site_id,),
+            ).fetchone()
+
+            if site is None:
+                return None
+
+            has_surveys = conn.execute(
+                '''select exists(
+                    select 1 from survey where site_id=%s
+                ) as has_surveys''',
+                (site_id,),
+            ).fetchone()['has_surveys']
+
+            if has_surveys:
+                raise ValueError(
+                    'Delete all surveys at this site before deleting the site.'
+                )
+
+            conn.execute('delete from site where site_id=%s', (site_id,))
+            return dict(site)
 
 def get_store():
     demo_mode = os.getenv('AIFN_DEMO_MODE', 'true').lower() == 'true'
