@@ -3,9 +3,13 @@
 -- ---------------------------------------------------------------------
 -- SITE
 -- ---------------------------------------------------------------------
+CREATE SEQUENCE site_code_seq START WITH 1;
+
 CREATE TABLE site (
     site_id       SERIAL PRIMARY KEY,
-    site_code     VARCHAR(50) NOT NULL UNIQUE,
+    site_code     VARCHAR(50) NOT NULL UNIQUE DEFAULT (
+    'SITE-' || LPAD(nextval('site_code_seq')::text, 6, '0')),
+    
     site_name     VARCHAR(255) NOT NULL,
     latitude      NUMERIC(9,6),
     longitude     NUMERIC(9,6),

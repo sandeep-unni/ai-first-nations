@@ -512,7 +512,6 @@ class PostgresSurveyFlowTests(SurveyFlowTests):
     def test_database_transaction_rolls_back_new_site(self):
         from survey_flow import new_site_details
         site = new_site_details('{"name":"Rollback site"}')
-        site['site_code'] = 'SITE-ROLLBACK'
         details = dict(survey_code='TEST-SITE-ROLLBACK', new_site=site, site_id=None,
                        survey_name='Rollback', survey_date=date.today(), survey_type='drone imagery', notes='')
         with self.assertRaises(Exception):

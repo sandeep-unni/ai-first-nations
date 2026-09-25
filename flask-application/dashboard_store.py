@@ -84,7 +84,12 @@ class DemoStore:
         new_site = details.pop('new_site', None)
         if new_site:
             site_id = max((s['site_id'] for s in self.sites), default=0) + 1
-            self.sites.append(dict(new_site, site_id=site_id))
+            new_site = dict(
+                new_site,
+                site_id=site_id,
+                site_code=f'SITE-{site_id:06d}',
+            )
+            self.sites.append(new_site)
             details['site_id'] = site_id
         site = next((s for s in self.sites if s['site_id'] == details['site_id']), None)
         if site is None:
@@ -284,9 +289,12 @@ class PostgresStore:
             new_site = details.pop('new_site', None)
             if new_site:
                 details['site_id'] = conn.execute('''insert into site
-                    (site_code, site_name, region, state, country, latitude, longitude, description)
-                    values (%(site_code)s, %(site_name)s, %(region)s, %(state)s, %(country)s,
-                            %(latitude)s, %(longitude)s, %(description)s) returning site_id''', new_site).fetchone()['site_id']
+                    (site_name, region, state, country, latitude, longitude, description)
+                    values (%(site_name)s, %(region)s, %(state)s, %(country)s,
+                            %(latitude)s, %(longitude)s, %(description)s)
+                    returning site_id''',
+                    new_site,
+                ).fetchone()['site_id']
             row = conn.execute('''insert into survey
                 (survey_code, site_id, survey_name, survey_date, survey_type, notes, status)
                 values (%(survey_code)s, %(site_id)s, %(survey_name)s, %(survey_date)s,

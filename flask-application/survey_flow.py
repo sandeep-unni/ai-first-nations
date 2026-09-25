@@ -260,7 +260,6 @@ def install_survey_flow(app, store):
         if values.get('new_site'):
             try:
                 new_site = new_site_details(values['new_site'])
-                new_site['site_code'] = 'SITE-' + submission_id
             except ValueError as exc:
                 errors.append(str(exc))
         elif site_id not in {s['site_id'] for s in store.list_sites()}:

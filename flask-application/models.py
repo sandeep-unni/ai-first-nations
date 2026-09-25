@@ -17,7 +17,9 @@ class Site(Base):
     __tablename__ = "site"
 
     site_id = Column(Integer, primary_key=True)
-    site_code = Column(String(50), nullable=False, unique=True)
+    site_code = Column(String(50), nullable=False, unique=True,server_default=text(
+        "'SITE-' || LPAD(nextval('site_code_seq')::text, 6, '0')"))
+    
     site_name = Column(String(255), nullable=False)
     latitude = Column(Numeric(9, 6))
     longitude = Column(Numeric(9, 6))
