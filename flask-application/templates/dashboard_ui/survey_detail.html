@@ -42,4 +42,13 @@
 {% if image.source_metadata %}<details><summary>Saved image metadata</summary><pre class="field-notes">{{ image.source_metadata|tojson(indent=2) }}</pre></details>{% endif %}
 {% if image.local_url %}<a class="btn small" href="{{ image.local_url }}?download=1">Download original</a>{% elif image.storage_url and image.storage_url.startswith(('https://', 'http://')) %}<a class="btn small" href="{{ image.storage_url }}" target="_blank" rel="noopener noreferrer">Open stored image ↗</a>{% else %}<span class="muted">Original is available at its storage location.</span>{% endif %}
 </div></article>{% else %}<p class="empty">No image records are attached to this survey.</p>{% endfor %}</div></section>
+<section class="card danger-zone" aria-labelledby="delete-survey-heading"><div class="danger-zone-copy"><h2 id="delete-survey-heading">Delete survey</h2>
+<p class="muted">Permanently remove this survey, its image records, analysis results and locally stored originals.</p></div>
+{% if survey.status == 'processing' %}<p class="muted danger-zone-note">Deletion is available after analysis finishes.</p>
+{% else %}<form method="post" class="delete-survey-form" action="{{ url_for('delete_survey', survey_id=survey.survey_id) }}">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+<label class="delete-confirm"><input type="checkbox" name="confirm" value="delete" required><span>I understand that this cannot be undone.</span></label>
+<button class="btn danger" type="submit">Delete survey</button>
+</form>
+{% endif %}</section>
 {% endblock %}

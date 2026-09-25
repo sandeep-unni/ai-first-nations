@@ -122,6 +122,37 @@ class DemoStore:
         image = next(i for s in self.surveys for i in s.get('images', []) if i['image_id'] == image_id)
         image['analyses'] = results
 
+    def delete_survey(self, survey_id):
+        if not self.processing_lock.acquire(blocking=False):
+            raise ValueError(
+                'This survey is currently being analysed. '
+                'Try again when processing finishes.'
+            )
+
+        try:
+            survey = next((item for item in self.surveys if item['survey_id'] == survey_id), None)
+
+            if survey is None:
+                return None
+
+            if survey['status'] == 'processing':
+                raise ValueError(
+                    'This survey is currently being analysed. '
+                    'Try again when processing finishes.'
+                )
+
+            self.surveys.remove(survey)
+
+            return dict(
+                survey,
+                stored_files=[
+                    dict(image)
+                    for image in survey.get('images', [])
+                ],
+            )
+        finally:
+            self.processing_lock.release()
+
 class PostgresStore:
     demo_mode = False
 
@@ -383,6 +414,71 @@ class PostgresStore:
         with self._connect() as conn, conn.cursor() as cur:
             cur.execute(query, (survey_id,))
             return {row['class_label']: float(row['probability']) for row in cur.fetchall()}
+
+    def delete_survey(self, survey_id):
+        with self._connect() as conn:
+            acquired = conn.execute(
+                'select pg_try_advisory_xact_lock(71420624) as acquired'
+            ).fetchone()['acquired']
+
+            if not acquired:
+                raise ValueError(
+                    'This survey is currently being analysed. '
+                    'Try again when processing finishes.'
+                )
+            
+            survey = conn.execute(
+                '''select survey_id, survey_code, survey_name, site_id, status
+                from survey where survey_id=%s for update''',
+                (survey_id,),
+            ).fetchone()
+
+            if survey is None:
+                return None
+            if survey['status'] == 'processing':
+                raise ValueError(
+                    'Wait for analysis to finish before deleting this survey.'
+                )
+
+            images = conn.execute(
+                '''select storage_provider, storage_container_id, storage_item_id
+                from image where survey_id=%s''',
+                (survey_id,),
+            ).fetchall()
+
+            conn.execute(
+                '''delete from class_probability
+                where analysis_id in (
+                    select a.analysis_id
+                    from analysis_result a
+                    join image i on i.image_id = a.image_id
+                    where i.survey_id=%s
+                )''',
+                (survey_id,),
+            )
+            conn.execute(
+                '''delete from tile_composition
+                where analysis_id in (
+                    select a.analysis_id
+                    from analysis_result a
+                    join image i on i.image_id = a.image_id
+                    where i.survey_id=%s
+                )''',
+                (survey_id,),
+            )
+            conn.execute(
+                '''delete from analysis_result
+                where image_id in (
+                    select image_id from image where survey_id=%s
+                )''',
+                (survey_id,),
+            )
+            conn.execute('delete from report where survey_id=%s', (survey_id,))
+            conn.execute('delete from survey_file where survey_id=%s', (survey_id,))
+            conn.execute('delete from image where survey_id=%s', (survey_id,))
+            conn.execute('delete from survey where survey_id=%s', (survey_id,))
+
+            return dict(survey, stored_files=images)
 
 def get_store():
     demo_mode = os.getenv('AIFN_DEMO_MODE', 'true').lower() == 'true'

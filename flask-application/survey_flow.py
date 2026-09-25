@@ -171,6 +171,49 @@ def save_images(files, folder, app):
                             width=width, height=height, band_count=bands, **metadata))
     return records
 
+def remove_local_files(records, upload_folder, storage_id):
+    """Remove files belonging to this app's local survey storage."""
+    root = Path(upload_folder).resolve()
+    parents = set()
+    failures = []
+
+    for record in records:
+        if record.get('storage_provider') != 'local':
+            continue
+
+        if record.get('storage_container_id') != storage_id:
+            continue
+
+        item = record.get('storage_item_id')
+        if not isinstance(item, str) or not item:
+            continue
+
+        path = (root / item).resolve()
+
+        # Never allow stored metadata to delete outside the upload folder.
+        if path == root or not path.is_relative_to(root):
+            failures.append(item)
+            continue
+
+        try:
+            path.unlink(missing_ok=True)
+            parents.add(path.parent)
+        except OSError:
+            failures.append(item)
+
+    # Remove empty per-survey upload folders, but never the root folder.
+    for parent in sorted(
+        parents,
+        key=lambda value: len(value.parts),
+        reverse=True,
+    ):
+        if parent != root and parent.is_relative_to(root):
+            try:
+                parent.rmdir()
+            except OSError:
+                pass
+
+    return failures
 
 def install_survey_flow(app, store):
     app.extensions['survey_store'] = store
@@ -321,6 +364,55 @@ def install_survey_flow(app, store):
                                        as_attachment=request.args.get('download') == '1')
         response.headers['X-Content-Type-Options'] = 'nosniff'
         return response
+
+    @app.post('/surveys/<int:survey_id>/delete', endpoint='delete_survey')
+    def delete_survey(survey_id):
+        supplied = request.form.get('csrf_token', '')
+        expected = session.get('survey_csrf', '') or 'invalid'
+
+        if not hmac.compare_digest(supplied, expected):
+            abort(400)
+        if request.form.get('confirm') != 'delete':
+            abort(400)
+
+        try:
+            deleted = store.delete_survey(survey_id)
+        except ValueError as exc:
+            flash(str(exc), 'error')
+            return redirect(
+                url_for('survey_detail', survey_id=survey_id),
+                code=303,
+            )
+
+        if deleted is None:
+            abort(404)
+
+        failures = remove_local_files(
+            deleted.get('stored_files', []),
+            app.config['SURVEY_UPLOAD_FOLDER'],
+            app.config['SURVEY_STORAGE_ID'],
+        )
+
+        if failures:
+            app.logger.warning(
+                'Survey %s deleted but files remain: %s',
+                survey_id,
+                failures,
+            )
+            flash(
+                'Survey deleted, but some original files could not be removed.',
+                'error',
+            )
+        else:
+            flash(
+                'Survey and locally stored original images deleted.',
+                'success',
+            )
+
+        return redirect(
+            url_for('surveys', site_id=deleted['site_id']),
+            code=303,
+        )
 
     @app.errorhandler(RequestEntityTooLarge)
     def upload_too_large(error):
