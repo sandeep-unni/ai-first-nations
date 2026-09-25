@@ -86,7 +86,8 @@ def image_metadata(image):
                 except ValueError:
                     pass
             for key, target in [('GpsLatitude', 'latitude'), ('GpsLongitude', 'longitude'),
-                                ('AbsoluteAltitude', 'absolute_altitude'), ('RelativeAltitude', 'relative_altitude')]:
+                                ('AbsoluteAltitude', 'absolute_altitude'), ('RelativeAltitude', 'relative_altitude'), 
+                                ('RtkStdLat', 'rtk_std_latitude'), ('RtkStdLon', 'rtk_std_longitude'), ('RtkStdHgt', 'rtk_std_height')]:
                 if key in xmp:
                     try:
                         value = float(xmp[key])

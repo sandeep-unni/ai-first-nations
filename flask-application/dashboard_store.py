@@ -272,9 +272,10 @@ class PostgresStore:
                     (survey_id, filename, file_type, file_size_bytes, storage_provider,
                      storage_container_id, storage_item_id, storage_url, width, height,
                      band_count, capture_sequence, capture_date, latitude, longitude,
-                     absolute_altitude, relative_altitude, positioning_status, camera_model, source_metadata)
+                     absolute_altitude, relative_altitude, positioning_status, rtk_std_latitude, 
+                     rtk_std_longitude, rtk_std_height, camera_model, source_metadata)
                     values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                            %s, %s, %s, %s, %s, %s, %s, %s)''',
+                            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)''',
                     (survey_id, image['filename'], image['file_type'], image['file_size_bytes'],
                      image['storage_provider'], image['storage_container_id'],
                      image['storage_item_id'], image['storage_url'], image['width'],
