@@ -5,7 +5,7 @@
 {# Values show as whole percents, so a change under half a point reads as no change.
    Only a quantity where more is better (mangrove share) is tinted; class shifts stay neutral. #}
 {% macro shift(delta, unit='pts', tinted=false) %}{% if delta >= 0.5 %}<span class="compare-delta {{ 'up' if tinted else 'neutral' }}">▲ {{ '%+.1f'|format(delta) }} {{ unit }}</span>{% elif delta <= -0.5 %}<span class="compare-delta {{ 'down' if tinted else 'neutral' }}">▼ {{ '%+.1f'|format(delta) }} {{ unit }}</span>{% else %}<span class="compare-delta same">No change</span>{% endif %}{% endmacro %}
-{% macro survey_label(s) %}{{ s.survey_date }} · {{ s.survey_name or s.survey_code }}{% endmacro %}
+{% macro survey_label(s) %}{{ s.survey_date }} · {{ s.survey_name or display_survey_code(s.survey_id) }}{% endmacro %}
 {% block body %}
 <form class="results-toolbar" method="get">
     <label for="compare-site">Site
@@ -32,9 +32,13 @@
         {% else %}<strong>—</strong><p class="muted">One of these surveys has no tile-level results.</p>{% endif %}
     </div>
     <div class="compare-pair">
-        <div><small>From</small><a href="{{ url_for('survey_detail', survey_id=before.survey_id) }}">{{ before.survey_name or before.survey_code }}</a><span>{{ before.survey_date }}</span><code>{{ before.survey_code or before.survey_id }}</code></div>
+        <div><small>From</small><a href="{{ url_for('survey_detail', survey_id=before.survey_id) }}">{{ before.survey_name or display_survey_code(before.survey_id) }}
+</a><span>{{ before.survey_date }}</span><code>{{ display_survey_code(before.survey_id) }}
+</code></div>
         <div class="compare-arrow" aria-hidden="true"><span>→</span><small>{{ change.days }} day{{ '' if change.days == 1 else 's' }}</small></div>
-        <div><small>To</small><a href="{{ url_for('survey_detail', survey_id=after.survey_id) }}">{{ after.survey_name or after.survey_code }}</a><span>{{ after.survey_date }}</span><code>{{ after.survey_code or after.survey_id }}</code></div>
+        <div><small>To</small><a href="{{ url_for('survey_detail', survey_id=after.survey_id) }}">{{ after.survey_name or display_survey_code(after.survey_id) }}
+</a><span>{{ after.survey_date }}</span><code>{{ display_survey_code(after.survey_id) }}
+</code></div>
     </div>
     {% if change.models_changed %}<p class="compare-warning" role="note"><span aria-hidden="true">⚠</span> Analysed with different model versions — part of this change may come from the model rather than the site.</p>{% endif %}
 </section>
@@ -117,7 +121,7 @@
         <li class="{{ 'is-selected' if (before and s.survey_id == before.survey_id) or (after and s.survey_id == after.survey_id) }}">
             <div class="compare-when"><strong>{{ s.survey_date }}</strong>{% if before and s.survey_id == before.survey_id %}<span class="compare-flag">From</span>{% elif after and s.survey_id == after.survey_id %}<span class="compare-flag">To</span>{% endif %}</div>
             <div class="compare-what">
-                <div><a href="{{ url_for('survey_detail', survey_id=s.survey_id) }}">{{ s.survey_name or s.survey_code }}</a> <code>{{ s.survey_code or s.survey_id }}</code></div>
+                <div><a href="{{ url_for('survey_detail', survey_id=s.survey_id) }}">{{ s.survey_name or display_survey_code(s.survey_id) }}</a> <code>{{ display_survey_code(s.survey_id) }}</code></div>
                 {% if mix.mangrove_tiles %}<div class="results-mini"><div class="site-mix-bar">{% for row in mix.rows if row.tiles %}<span style="width: {{ '%.2f'|format(row.percent) }}%; {{ class_style(row.label) }}"></span>{% endfor %}</div><span>{{ '%.0f'|format(mix.mangrove_percent) }}% mangrove</span></div>
                 {% elif mix.total_tiles %}<p class="muted">No mangrove in {{ mix.total_tiles }} tiles</p>
                 {% else %}<p class="muted">{{ 'No tile results' if s.summary.images else 'Not analysed yet' }} · {{ status_label(s.status) }}</p>{% endif %}

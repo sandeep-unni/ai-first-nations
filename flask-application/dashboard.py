@@ -22,6 +22,10 @@ def install_dashboard(app, store=None):
     store = store if store is not None else get_store()
     install_survey_flow(app, store)
 
+    @app.template_global()
+    def display_survey_code(survey_id):
+        return f"SUR-{int(survey_id):06d}"
+
     @app.route("/dashboard")
     def dashboard():
         return render_template(
@@ -269,7 +273,7 @@ def install_dashboard(app, store=None):
             role = ("From" if before and s["survey_id"] == before["survey_id"] else
                     "To" if after and s["survey_id"] == after["survey_id"] else "")
             marks.append(dict(x=x, y=top + plot_h * (1 - value / 100), value=value, role=role,
-                              date=str(s["survey_date"]), name=s["survey_name"] or s["survey_code"],
+                              date=str(s["survey_date"]), name=s["survey_name"] or display_survey_code(s["survey_id"]),
                               survey_id=s["survey_id"]))
         line = " ".join(f"{'M' if i == 0 else 'L'}{m['x']:.1f},{m['y']:.1f}" for i, m in enumerate(marks))
         area = (f"{line} L{marks[-1]['x']:.1f},{top + plot_h:.1f} L{marks[0]['x']:.1f},{top + plot_h:.1f} Z"

@@ -54,15 +54,15 @@
     <div class="results-list">
     {% for survey in surveys %}{% set summary = survey.summary %}{% set mix = summary.composition %}
     <article class="results-survey">
-        <a class="results-preview" href="{{ url_for('survey_detail', survey_id=survey.survey_id) }}" aria-label="Open {{ survey.survey_name or survey.survey_code }}">
+        <a class="results-preview" href="{{ url_for('survey_detail', survey_id=survey.survey_id) }}" aria-label="Open {{ survey.survey_name or display_survey_code(survey.survey_id) }}">
             {% if survey.preview_url %}<img loading="lazy" src="{{ survey.preview_url }}" alt="{{ survey.preview.filename }}"><span>Original image</span>
             {% else %}<div>{{ ('No preview · ' ~ survey.preview.file_type|upper) if survey.preview else 'No images' }}</div>{% endif %}
         </a>
         <div class="results-survey-body">
             <div class="results-survey-head">
                 <div>
-                    <h4><a href="{{ url_for('survey_detail', survey_id=survey.survey_id) }}">{{ survey.survey_name or survey.survey_code }}</a></h4>
-                    <p class="results-id">Survey ID <code>{{ survey.survey_code or survey.survey_id }}</code></p>
+                    <h4><a href="{{ url_for('survey_detail', survey_id=survey.survey_id) }}">{{ survey.survey_name or display_survey_code(survey.survey_id) }}</a></h4>
+                    <p class="results-id">Survey ID <code>{{ display_survey_code(survey.survey_id) }}</code></p>
                 </div>
                 <span class="status">{{ status_label(survey.status) }}</span>
             </div>

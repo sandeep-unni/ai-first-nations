@@ -4,7 +4,7 @@
 {% block body %}
 <div class="page-actions"><form method="get"><label for="site-filter">Filter by site<select name="site_id" id="site-filter"><option value="">All sites</option>{% for site in sites %}<option value="{{ site.site_id }}" {% if site_id == site.site_id %}selected{% endif %}>{{ site.site_name }}</option>{% endfor %}</select></label><button class="btn small filter-submit" type="submit">Apply filter</button></form><a class="btn primary" href="{{ url_for('survey_step_1') }}">+ Create Survey</a></div>
 <section class="card"><div class="table-wrap"><table><thead><tr><th>Survey</th><th>Site</th><th>Date</th><th>Images</th><th>Status</th></tr></thead><tbody>
-{% for survey in surveys %}<tr><td><a href="{{ url_for('survey_detail', survey_id=survey.survey_id) }}">{{ survey.survey_name or survey.survey_code }}</a></td><td>{{ survey.site_name }}</td><td>{{ survey.survey_date }}</td><td>{{ survey.image_count }}</td><td><span class="status">{{ 'Pending analysis' if survey.status == 'pending' else survey.status }}</span></td></tr>
+{% for survey in surveys %}<tr><td><a href="{{ url_for('survey_detail', survey_id=survey.survey_id) }}">{{ survey.survey_name or display_survey_code(survey.survey_id) }}</a></td><td>{{ survey.site_name }}</td><td>{{ survey.survey_date }}</td><td>{{ survey.image_count }}</td><td><span class="status">{{ 'Pending analysis' if survey.status == 'pending' else survey.status }}</span></td></tr>
 {% else %}<tr><td colspan="5" class="empty">No surveys yet. Create a survey to add this site's first drone images.</td></tr>{% endfor %}
 </tbody></table></div></section>
 {% endblock %}

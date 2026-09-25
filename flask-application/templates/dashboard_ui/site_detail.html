@@ -22,7 +22,7 @@
 {% else %}<p class="empty">No completed analysis at this site yet.</p>{% endif %}</section>
 <section class="card"><div class="card-head"><h2>Survey history</h2><a href="{{ url_for('surveys', site_id=site.site_id) }}">Open in Surveys</a></div>
 <div class="table-wrap"><table><thead><tr><th>Survey</th><th>Survey ID</th><th>Date</th><th>Images</th><th>Status</th></tr></thead><tbody>
-{% for survey in surveys %}<tr><td><a href="{{ url_for('survey_detail', survey_id=survey.survey_id) }}">{{ survey.survey_name or survey.survey_code }}</a></td><td><code class="site-survey-id">{{ survey.survey_code or survey.survey_id }}</code></td><td>{{ survey.survey_date }}</td><td>{{ survey.image_count }}</td><td><span class="status">{{ status_label(survey.status) }}</span></td></tr>
+{% for survey in surveys %}<tr><td><a href="{{ url_for('survey_detail', survey_id=survey.survey_id) }}">{{ survey.survey_name or display_survey_code(survey.survey_id) }}</a></td><td><code class="site-survey-id">{{ display_survey_code(survey.survey_id) }}</code></td><td>{{ survey.survey_date }}</td><td>{{ survey.image_count }}</td><td><span class="status">{{ status_label(survey.status) }}</span></td></tr>
 {% else %}<tr><td colspan="5" class="empty">No surveys yet. Create a survey to add this site's first drone images.</td></tr>{% endfor %}
 </tbody></table></div></section>
 <section class="card danger-zone" aria-labelledby="delete-site-heading"><div class="danger-zone-copy"><h2 id="delete-site-heading">Delete site</h2>
