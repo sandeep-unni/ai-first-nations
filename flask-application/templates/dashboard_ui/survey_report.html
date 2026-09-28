@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ survey.survey_name or display_survey_code(survey.survey_id) }} · Survey report</title>
+<style>
+    :root { --green: #1f742e; --border: #dfe4df; --text: #17201a; --muted: #68716a; --soft: #f3f6f3; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--text); background: #fff; font-size: 14px; line-height: 1.5; }
+    main { max-width: 960px; margin: 0 auto; padding: 40px 24px 56px; }
+    header { border-bottom: 3px solid var(--green); padding-bottom: 16px; margin-bottom: 24px; }
+    .eyebrow { color: var(--green); font-weight: 700; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; margin: 0; }
+    h1 { font-size: 26px; margin: 4px 0; }
+    h2 { font-size: 17px; margin: 32px 0 12px; }
+    .muted { color: var(--muted); }
+    .grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+    .grid div { background: var(--soft); border-radius: 8px; padding: 12px 14px; }
+    .grid small { display: block; color: var(--muted); font-size: 12px; }
+    .grid strong { font-size: 17px; font-variant-numeric: tabular-nums; }
+    .notice { border-left: 4px solid #d9b625; background: #fdf8e4; padding: 10px 14px; border-radius: 4px; margin: 16px 0; }
+    .notes { white-space: pre-wrap; background: var(--soft); border-radius: 8px; padding: 12px 14px; margin: 0; }
+    .composition-row { display: grid; grid-template-columns: 12px 70px 1fr 110px; align-items: center; gap: 10px; padding: 5px 0; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; background: #9aa39b; }
+    .bar { height: 10px; background: #edf0ed; border-radius: 5px; overflow: hidden; }
+    .bar span { display: block; height: 100%; background: #9aa39b; }
+    .orange { background: #e88c24 !important; } .red { background: #d84a4a !important; } .yellow { background: #d9b625 !important; }
+    .num { text-align: right; font-variant-numeric: tabular-nums; }
+    table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+    th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+    th { color: var(--muted); font-weight: 600; font-size: 11.5px; text-transform: uppercase; letter-spacing: .03em; }
+    td.file { word-break: break-all; }
+    .table-wrap { overflow-x: auto; }
+    footer { margin-top: 36px; padding-top: 14px; border-top: 1px solid var(--border); font-size: 12px; color: var(--muted); }
+    @media (max-width: 640px) { .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } main { padding: 24px 16px; } }
+    @media print {
+        main { padding: 0; max-width: none; }
+        h2 { break-after: avoid; }
+        tr, .grid div { break-inside: avoid; }
+        .table-wrap { overflow: visible; }
+        * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    }
+</style>
+</head>
+<body>
+<main>
+<header>
+    <p class="eyebrow">AI First Nations · Mangrove survey report</p>
+    <h1>{{ survey.survey_name or display_survey_code(survey.survey_id) }}</h1>
+    <div class="muted">{{ survey.site_name }} · Surveyed {{ survey.survey_date }} · {{ display_survey_code(survey.survey_id) }}</div>
+</header>
+
+<section class="grid">
+    <div><small>Monitoring site</small><strong>{{ survey.site_name }}</strong></div>
+    <div><small>Survey date</small><strong>{{ survey.survey_date }}</strong></div>
+    <div><small>Images</small><strong>{{ survey.images|length }}</strong></div>
+    <div><small>Status</small><strong>{{ 'Pending analysis' if survey.status == 'pending' else survey.status|capitalize }}</strong></div>
+</section>
+{% if survey.status != 'completed' %}<p class="notice">Analysis {{ 'had not finished' if survey.status in ['pending', 'processing'] else 'did not finish for every image' }} when this report was generated. Figures cover only the {{ stats.completed }} of {{ survey.images|length }} images analysed so far.</p>{% endif %}
+
+{% if survey.notes %}<h2>Field notes</h2><p class="notes">{{ survey.notes }}</p>{% endif %}
+
+<h2>Results summary</h2>
+<section class="grid">
+    <div><small>Images analysed</small><strong>{{ stats.completed }} / {{ survey.images|length }}</strong></div>
+    <div><small>Mangrove detected</small><strong>{{ stats.mangrove }}</strong></div>
+    <div><small>Failed images</small><strong>{{ stats.failed }}</strong></div>
+    <div><small>Mean class confidence</small><strong>{{ ('%.1f%%'|format(stats.mean_confidence * 100)) if stats.mean_confidence is not none else '—' }}</strong></div>
+</section>
+
+{% set composition = stats.composition %}
+{% if composition.mangrove_tiles %}
+<h2>Mangrove composition</h2>
+<p class="muted">Share of the {{ composition.mangrove_tiles }} mangrove tiles, out of {{ composition.total_tiles }} tiles analysed ({{ '%.1f'|format(composition.mangrove_percent) }}% mangrove).</p>
+{% for row in composition.rows %}<div class="composition-row"><span class="dot {{ row.label|lower }}"></span><strong>{{ row.label|capitalize }}</strong><span class="bar"><span class="{{ row.label|lower }}" style="width: {{ '%.1f'|format(row.percent) }}%"></span></span><span class="num">{{ '%.1f'|format(row.percent) }}% <span class="muted">({{ row.tiles }})</span></span></div>{% endfor %}
+{% elif composition.total_tiles %}
+<h2>Mangrove composition</h2><p>No mangrove tiles detected in {{ composition.total_tiles }} tiles analysed.</p>
+{% endif %}
+
+{% if stats.classes %}<h2>Predicted colour classes</h2>
+<table><thead><tr><th>Class</th><th class="num">Images</th></tr></thead><tbody>
+{% for label, count in stats.classes|dictsort %}<tr><td>{{ label|capitalize }}</td><td class="num">{{ count }}</td></tr>{% endfor %}
+</tbody></table>{% endif %}
+
+<h2>Image results</h2>
+{% if rows %}<div class="table-wrap"><table>
+<thead><tr><th>#</th><th>Image</th><th>Captured</th><th>GPS</th><th>Mangrove</th><th>Colour class</th><th>Mangrove tiles</th></tr></thead>
+<tbody>{% for row in rows %}{% set image = row.image %}<tr>
+    <td class="num">{{ loop.index }}</td>
+    <td class="file">{{ image.filename }}{% if image.width and image.height %}<br><span class="muted">{{ image.width }} × {{ image.height }}</span>{% endif %}</td>
+    <td>{{ image.capture_date or '—' }}</td>
+    <td>{% if image.latitude is defined and image.longitude is defined and image.latitude is not none and image.longitude is not none %}{{ '%.6f'|format(image.latitude) }}, {{ '%.6f'|format(image.longitude) }}{% if image.positioning_status %}<br><span class="muted">{{ image.positioning_status }}</span>{% endif %}{% else %}—{% endif %}</td>
+    <td>{% if row.status == 'failed' %}Analysis failed{% elif row.mangrove %}{{ row.mangrove }}<br><span class="muted">{{ '%.1f'|format(row.mangrove_confidence * 100) }}%</span>{% else %}Pending{% endif %}</td>
+    <td>{% if row.colour_class %}{{ row.colour_class|capitalize }}<br><span class="muted">{{ '%.1f'|format(row.colour_confidence * 100) }}%</span>{% elif row.classification_skipped %}<span class="muted">Not applicable</span>{% else %}—{% endif %}</td>
+    <td>{% if row.tiles and row.tiles.mangrove_tiles %}{{ row.tiles.mangrove_tiles }} of {{ row.tiles.total_tiles }}<br><span class="muted">{% for t in row.tiles.rows if t.tiles %}{{ t.label|capitalize }} {{ '%.0f'|format(t.percent) }}%{{ ' · ' if not loop.last }}{% endfor %}</span>{% elif row.tiles %}0 of {{ row.tiles.total_tiles }}{% else %}—{% endif %}</td>
+</tr>{% endfor %}</tbody>
+</table></div>
+{% else %}<p class="muted">No image records are attached to this survey.</p>{% endif %}
+
+<footer>
+    <p>Composition counts each 512px tile of each image; tiles overlap slightly, and overlapping drone photos repeat ground, so these are shares of imagery, not measured ground area. Orange, red and yellow are the model's colour classes, not validated species.</p>
+    <p>Generated {{ generated_at.strftime('%d %B %Y, %H:%M %Z') }} · {{ display_survey_code(survey.survey_id) }}</p>
+</footer>
+</main>
+</body>
+</html>

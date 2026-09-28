@@ -4,7 +4,8 @@ Set TEST_DATABASE_URL to a disposable local PostgreSQL database to also exercise
 real transactions in isolated schemas. Never point this at the shared database.
 """
 from datetime import date, timedelta
-from io import BytesIO
+from io import BytesIO, StringIO
+import csv
 import os
 import json
 from pathlib import Path
@@ -398,6 +399,44 @@ class SurveyFlowTests(unittest.TestCase):
     def test_new_survey_preselects_site_from_site_page(self):
         html = self.client.get('/surveys/new?site_id=1').get_data(as_text=True)
         self.assertRegex(html, r'<option value="1"\s+selected>')
+
+    def test_survey_report_downloads(self):
+        response = self.post(self.form_data(survey_name='=HYPERLINK("x") flight'),
+                             files=[image_file(), image_file()])
+        process_next(self.app, self.store, lambda path: dict(prediction(path), tiles={'Non-Mangrove': 2, 'orange': 6, 'red': 2}), MODELS)
+        survey_id = int(response.location.rsplit('/', 1)[1])
+        code = f'SUR-{survey_id:06d}'
+        self.assertIn(f'/surveys/{survey_id}/report', self.client.get(response.location).get_data(as_text=True))
+
+        report = self.client.get(f'/surveys/{survey_id}/report')
+        self.assertEqual(report.status_code, 200)
+        self.assertEqual(report.headers['Content-Disposition'],
+                         f'attachment; filename="HYPERLINKx_flight-{code}-report.html"')
+        html = report.get_data(as_text=True)
+        self.assertIn(code, html)
+        self.assertIn('Mangrove composition', html)
+        self.assertIn('75.0%', html)
+        self.assertIn('Orange 75% · Red 25%', html)
+        self.assertNotIn('had not finished', html)
+        self.assertTrue(self.client.get(f'/surveys/{survey_id}/report?download=0')
+                        .headers['Content-Disposition'].startswith('inline'))
+
+        data = self.client.get(f'/surveys/{survey_id}/report.csv')
+        self.assertEqual(data.status_code, 200)
+        rows = list(csv.DictReader(StringIO(data.get_data(as_text=True).lstrip('﻿'))))
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[0]['survey_code'], code)
+        self.assertEqual(rows[0]['survey_name'], '\'=HYPERLINK("x") flight')
+        self.assertEqual((rows[0]['mangrove_detection'], rows[0]['colour_class'], rows[0]['tiles_orange']),
+                         ('Mangrove', 'orange', '6'))
+        self.assertEqual(self.client.get('/surveys/999999/report').status_code, 404)
+        self.assertEqual(self.client.get('/surveys/999999/report.csv').status_code, 404)
+
+    def test_report_flags_unfinished_analysis(self):
+        response = self.post()
+        html = self.client.get(response.location + '/report').get_data(as_text=True)
+        self.assertIn('Analysis had not finished', html)
+        self.assertIn('Pending', html)
 
     def test_reanalysis_replaces_tile_counts(self):
         response = self.post()

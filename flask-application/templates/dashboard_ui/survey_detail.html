@@ -3,7 +3,7 @@
 {% block page_title %}{{ survey.survey_name or 'Survey' }}{% endblock %}
 {% block page_subtitle %}{{ survey.site_name }} · {{ survey.survey_date }}{% endblock %}
 {% block body %}
-<div class="page-actions"><a class="back-link" href="{{ url_for('surveys', site_id=survey.site_id) }}">← All surveys at this site</a><a class="btn" href="{{ url_for('survey_step_1') }}">+ New survey</a></div>
+<div class="page-actions"><a class="back-link" href="{{ url_for('surveys', site_id=survey.site_id) }}">← All surveys at this site</a><span class="action-group"><a class="btn" href="{{ url_for('survey_report', survey_id=survey.survey_id) }}" download>Download report</a><a class="btn" href="{{ url_for('survey_report_csv', survey_id=survey.survey_id) }}" download>Download data (CSV)</a><a class="btn" href="{{ url_for('survey_step_1') }}">+ New survey</a></span></div>
 <section class="card"><div class="detail-grid"><div><small>Monitoring site</small><strong>{{ survey.site_name }}</strong></div><div><small>Survey date</small><strong>{{ survey.survey_date }}</strong></div><div><small>Images</small><strong>{{ survey.images|length }}</strong></div><div><small>Status</small><strong>{{ 'Pending analysis' if survey.status == 'pending' else survey.status|capitalize }}</strong></div></div>
 {% if survey.notes %}<h3 class="notes-heading">Field notes</h3><p class="field-notes">{{ survey.notes }}</p>{% endif %}
 {% if survey.status in ['pending', 'processing'] %}<div id="analysis-progress" class="info-box survey-progress" data-progress-url="{{ url_for('survey_progress', survey_id=survey.survey_id) }}">

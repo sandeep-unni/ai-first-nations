@@ -338,6 +338,35 @@ def install_survey_flow(app, store):
                                stats=survey_statistics(survey), csrf_token=session['survey_csrf'],
                                tile_composition=tile_composition)
 
+    def survey_code(survey):
+        # Same simplified code the dashboard shows, e.g. SUR-000015.
+        return app.jinja_env.globals['display_survey_code'](survey['survey_id'])
+
+    @app.get('/surveys/<int:survey_id>/report', endpoint='survey_report')
+    def survey_report(survey_id):
+        from survey_processing import survey_statistics
+        from survey_report import image_rows, report_filename
+        survey = store.get_survey(survey_id)
+        if survey is None:
+            abort(404)
+        html = render_template('dashboard_ui/survey_report.html', survey=survey, stats=survey_statistics(survey),
+                               rows=image_rows(survey), generated_at=datetime.now().astimezone())
+        disposition = 'attachment' if request.args.get('download', '1') == '1' else 'inline'
+        filename = report_filename(survey, survey_code(survey), 'html')
+        return html, 200, {'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store',
+                           'Content-Disposition': f'{disposition}; filename="{filename}"'}
+
+    @app.get('/surveys/<int:survey_id>/report.csv', endpoint='survey_report_csv')
+    def survey_report_csv(survey_id):
+        from survey_report import report_csv, report_filename
+        survey = store.get_survey(survey_id)
+        if survey is None:
+            abort(404)
+        code = survey_code(survey)
+        return report_csv(survey, code), 200, {
+            'Content-Type': 'text/csv; charset=utf-8', 'Cache-Control': 'no-store',
+            'Content-Disposition': f'attachment; filename="{report_filename(survey, code, "csv")}"'}
+
     @app.get('/surveys/<int:survey_id>/progress', endpoint='survey_progress')
     def survey_progress(survey_id):
         from survey_processing import survey_statistics
