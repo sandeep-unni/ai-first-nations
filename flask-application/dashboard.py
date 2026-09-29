@@ -32,6 +32,7 @@ def install_dashboard(app, store=None):
             "dashboard_ui/dashboard.html",
             summary=store.dashboard_summary(),
             recent_surveys=store.list_surveys(limit=5),
+            class_style=class_style,
             active="dashboard",
             demo_mode=store.demo_mode,
         )
@@ -123,9 +124,9 @@ def install_dashboard(app, store=None):
         rows = store.site_overview(site_id)
         if not rows:
             abort(404)
-        
+
         session.setdefault("site_csrf", secrets.token_urlsafe(32))
-        
+
         return render_template(
             "dashboard_ui/site_detail.html",
             site=site_view(rows[0], date.today()),

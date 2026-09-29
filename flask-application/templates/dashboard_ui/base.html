@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}Mangrove Survey Dashboard{% endblock %}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='dashboard/styles.css') }}">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700;12..96,800&family=Public+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+
 </head>
 <body>
 <div class="app-shell">
@@ -29,12 +31,14 @@
     </aside>
 
     <main class="main-panel">
+        {% if active != 'dashboard' %}
         <header class="topbar">
             <div>
                 <h1>{% block page_title %}Mangrove Survey Dashboard{% endblock %}</h1>
                 <p>{% block page_subtitle %}Monitor mangrove sites and track survey results over time.{% endblock %}</p>
             </div>
         </header>
+        {% endif %}
 
         <section class="content">
             {% if demo_mode %}
