@@ -24,13 +24,13 @@
     </header>
 
     {% if site.days_since is none %}<p class="site-fresh never"><span></span>Never surveyed</p>
-    {% else %}{% set days = site.days_since %}<p class="site-fresh {{ 'recent' if site.recent else 'older' }}" title="{{ 'Flown' if site.recent else 'Not flown' }} in the last {{ recent_days }} days"><span></span>Last flown {{ site.last_survey_date }} · {% if days == 0 %}today{% elif days < 0 %}in {{ -days }} day{{ '' if days == -1 else 's' }}{% else %}{{ days }} day{{ '' if days == 1 else 's' }} ago{% endif %}{% if site.last_survey_status %} · {{ status_label(site.last_survey_status) }}{% endif %}</p>{% endif %}
+    {% else %}{% set days = site.days_since %}<p class="site-fresh {{ 'recent' if site.recent else 'older' }}" title="{{ 'Flown' if site.recent else 'Not flown' }} in the last {{ recent_days }} days"><span></span>Last flown: {{ site.last_survey_date }} · {% if days == 0 %}today{% elif days < 0 %}in {{ -days }} day{{ '' if days == -1 else 's' }}{% else %}{{ days }} day{{ '' if days == 1 else 's' }} ago{% endif %}{% if site.last_survey_status %} · {{ status_label(site.last_survey_status) }}{% endif %}</p>{% endif %}
 
     <div class="site-mix">
     {% if composition.mangrove_tiles %}
         <div class="site-mix-bar" role="img" aria-label="{% for row in composition.rows %}{{ row.label }} {{ '%.0f'|format(row.percent) }}%{{ ', ' if not loop.last }}{% endfor %}">{% for row in composition.rows if row.tiles %}<span style="width: {{ '%.2f'|format(row.percent) }}%; {{ class_style(row.label) }}"></span>{% endfor %}</div>
         <p class="site-mix-legend">{% for row in composition.rows %}<span><i class="site-dot" style="{{ class_style(row.label) }}"></i>{{ row.label|capitalize }} {{ '%.0f'|format(row.percent) }}%</span>{% endfor %}</p>
-        <p class="muted">{{ '%.0f'|format(composition.mangrove_percent) }}% of imaged tiles are mangrove · survey of {{ site.latest_completed_date }}</p>
+        <p class="muted">{{ '%.0f'|format(composition.mangrove_percent) }}% of analysed image tiles were classified as mangrove · Survey: {{ site.latest_completed_date }}</p>
     {% elif composition.total_tiles %}
         <div class="site-mix-bar empty"></div><p class="muted">No mangrove found in {{ composition.total_tiles }} tiles · survey of {{ site.latest_completed_date }}</p>
     {% else %}

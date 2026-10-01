@@ -4,7 +4,7 @@
 {% block page_subtitle %}How a site has changed between drone surveys.{% endblock %}
 {# Values show as whole percents, so a change under half a point reads as no change.
    Only a quantity where more is better (mangrove share) is tinted; class shifts stay neutral. #}
-{% macro shift(delta, unit='pts', tinted=false) %}{% if delta >= 0.5 %}<span class="compare-delta {{ 'up' if tinted else 'neutral' }}">▲ {{ '%+.1f'|format(delta) }} {{ unit }}</span>{% elif delta <= -0.5 %}<span class="compare-delta {{ 'down' if tinted else 'neutral' }}">▼ {{ '%+.1f'|format(delta) }} {{ unit }}</span>{% else %}<span class="compare-delta same">No change</span>{% endif %}{% endmacro %}
+{% macro shift(delta, unit='pp', tinted=false) %}{% if delta >= 0.5 %}<span class="compare-delta {{ 'up' if tinted else 'neutral' }}">▲ {{ '%+.1f'|format(delta) }} {{ unit }}</span>{% elif delta <= -0.5 %}<span class="compare-delta {{ 'down' if tinted else 'neutral' }}">▼ {{ '%+.1f'|format(delta) }} {{ unit }}</span>{% else %}<span class="compare-delta same">No change</span>{% endif %}{% endmacro %}
 {% macro survey_label(s) %}{{ s.survey_date }} · {{ s.survey_name or display_survey_code(s.survey_id) }}{% endmacro %}
 {% block body %}
 <form class="results-toolbar" method="get">
@@ -35,7 +35,7 @@
         <div><small>From</small><a href="{{ url_for('survey_detail', survey_id=before.survey_id) }}">{{ before.survey_name or display_survey_code(before.survey_id) }}
 </a><span>{{ before.survey_date }}</span><code>{{ display_survey_code(before.survey_id) }}
 </code></div>
-        <div class="compare-arrow" aria-hidden="true"><span>→</span><small>{{ change.days }} day{{ '' if change.days == 1 else 's' }}</small></div>
+        <div class="compare-arrow" aria-hidden="true"><span>→</span><small>{{ 'Same day' if change.days == 0 else change.days ~ ' day' ~ ('' if change.days == 1 else 's') }}</small></div>
         <div><small>To</small><a href="{{ url_for('survey_detail', survey_id=after.survey_id) }}">{{ after.survey_name or display_survey_code(after.survey_id) }}
 </a><span>{{ after.survey_date }}</span><code>{{ display_survey_code(after.survey_id) }}
 </code></div>
@@ -86,25 +86,25 @@
             </svg>
             <div class="viz-tip" role="status" hidden><strong></strong><span></span></div>
         </figure>
-        <p class="muted compare-caption">Larger points are the two surveys being compared. Hover or tab to a point for its value; every survey is also listed in the timeline below.</p>
+        <p class="muted compare-caption">Larger points are the two surveys being compared. Hover over or tab to a point to view its value; every survey is also listed in the timeline below.</p>
         {% else %}<p class="empty">No tile-level results to chart yet.</p>{% endif %}
     </section>
 </div>
 
 <section class="card">
-    <div class="card-head"><h3>Model outputs</h3><span class="muted">top result per model, before → after</span></div>
+    <div class="card-head"><h3>Model outputs</h3><span class="muted">Top result for each model: before → after</span></div>
     <div class="compare-tasks">
     {% for task in change.tasks %}
         <div class="compare-task">
             <div class="results-task-head"><strong>{{ status_label(task.name) }}</strong>{% if task.model_changed %}<span class="compare-flag">⚠ Model changed</span>{% endif %}</div>
             <div class="compare-outcome">
-                <div>{% if task.before %}<span class="compare-class-chip"><i class="site-dot" style="{{ class_style(task.before) }}"></i>{{ task.before }}</span>{% else %}<span class="muted">—</span>{% endif %}{% if task.before_conf is not none %}<small>{{ '%.0f'|format(task.before_conf * 100) }}% confidence</small>{% endif %}</div>
+                <div>{% if task.before %}<span class="compare-class-chip"><i class="site-dot" style="{{ class_style(task.before) }}"></i>{{ task.before|capitalize }}</span>{% else %}<span class="muted">—</span>{% endif %}{% if task.before_conf is not none %}<small>{{ '%.0f'|format(task.before_conf * 100) }}% confidence</small>{% endif %}</div>
                 <span class="compare-arrow" aria-hidden="true"><span>→</span></span>
-                <div>{% if task.after %}<span class="compare-class-chip"><i class="site-dot" style="{{ class_style(task.after) }}"></i>{{ task.after }}</span>{% else %}<span class="muted">—</span>{% endif %}{% if task.after_conf is not none %}<small>{{ '%.0f'|format(task.after_conf * 100) }}% confidence</small>{% endif %}</div>
+                <div>{% if task.after %}<span class="compare-class-chip"><i class="site-dot" style="{{ class_style(task.after) }}"></i>{{ task.after|capitalize }}</span>{% else %}<span class="muted">—</span>{% endif %}{% if task.after_conf is not none %}<small>{{ '%.0f'|format(task.after_conf * 100) }}% confidence</small>{% endif %}</div>
             </div>
             {% if task.before_models or task.after_models %}
             <p class="results-model muted">
-                Model
+                Model:
                 <span title="Before: {{ task.before_models|join(', ') }}{% if task.model_changed %}; after: {{ task.after_models|join(', ') }}{% endif %}">
                     {{ display_model_name(task.name) }}
                 </span>
@@ -122,7 +122,7 @@
 
 {% if timeline %}
 <section class="card">
-    <div class="card-head"><h3>Survey timeline</h3><span class="muted">oldest first</span></div>
+    <div class="card-head"><h3>Survey timeline</h3><span class="muted">Oldest first</span></div>
     <ol class="compare-timeline">
     {% for s in timeline %}{% set mix = s.summary.composition %}
         <li class="{{ 'is-selected' if (before and s.survey_id == before.survey_id) or (after and s.survey_id == after.survey_id) }}">
