@@ -74,16 +74,25 @@
                 <dt>{{ status_label(name) }}</dt>
                 <dd>{% if task.rows %}<i class="site-dot" style="{{ class_style(task.rows[0].label) }}"></i>{{ task.rows[0].label }}{% if task.rows|length > 1 %} <span class="muted">(+{{ task.rows|length - 1 }} other)</span>{% endif %}{% else %}{% for status, count in task.statuses|dictsort %}{{ status_label(status) }} {{ count }}{{ ' · ' if not loop.last }}{% endfor %}{% endif %}
                     {% if task.mean_confidence is not none %}<span class="muted"> · {{ '%.0f'|format(task.mean_confidence * 100) }}% confidence</span>{% endif %}</dd>
-                {% if task.models %}<dd class="results-model">Model {% for version in task.models %}<code title="{{ version }}">{{ version if version|length <= 20 else version[:20] ~ '…' }}</code>{{ ', ' if not loop.last }}{% endfor %}</dd>{% endif %}
+                {% if task.models %}
+                <dd class="results-model">
+                    Model
+                    <span title="Technical version: {{ task.models|join(', ') }}">
+                        {{ display_model_name(name) }}
+                    </span>
+                </dd>
+                {% endif %}
             </div>{% endfor %}
             </dl>{% else %}<p class="muted">Not analysed yet.</p>{% endif %}
-            {% if summary.analysed_at %}<p class="results-date muted">Analysed {{ summary.analysed_at.strftime('%Y-%m-%d %H:%M') if summary.analysed_at.strftime is defined else summary.analysed_at }}</p>{% endif %}
         </div>
     </article>
     {% endfor %}
     </div>
 </section>
 
-<p class="muted results-note">Colour mix counts each image tile, so shares describe imagery, not measured ground area; class names are the model's labels, not validated species.{% if overall.models %} Models: {% for name, version in overall.models %}{{ name }}{% if version %} ({{ version }}){% endif %}{{ ', ' if not loop.last }}{% endfor %}.{% endif %}</p>
+<p class="muted results-note">
+    Colour mix counts each image tile, so shares describe imagery, not measured
+    ground area; class names are the model's labels, not validated species.
+</p>
 {% endif %}
 {% endblock %}

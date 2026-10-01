@@ -103,6 +103,14 @@ def install_dashboard(app, store=None):
     def status_label(status):
         return str(status).replace("_", " ").capitalize() if status else ""
 
+    @app.template_global()
+    def display_model_name(analysis_type):
+        names = {
+            "binary_detection": "Mangrove Detector v1",
+            "species_classification": "Colour Classifier v1",
+        }
+        return names.get(analysis_type, status_label(analysis_type))
+
     @app.route("/sites")
     def sites():
         today = date.today()

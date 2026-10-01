@@ -315,16 +315,18 @@ class SurveyFlowTests(unittest.TestCase):
         self.assertIn(f'/surveys/{survey_id}', html)
         self.assertIn('2 / 2 images analysed', html)
         survey = self.store.get_survey(survey_id)
-        # Traceability: Survey ID, model version per task and a preview of the original.
-        self.assertIn(f'Survey ID <code>{survey["survey_code"]}</code>', html)
+        display_code = f'SUR-{survey_id:06d}'
+        self.assertIn(f'Survey ID <code>{display_code}</code>', html)        
         self.assertIn('orange', html)
         self.assertIn('80% confidence', html)
         self.assertIn(survey['images'][0]['storage_url'], html)
         if not self.store.demo_mode:  # the demo store keeps no model records or timestamps
-            self.assertIn('<code title="test-v1">test-v1</code>', html)
+            self.assertIn('Mangrove Detector v1', html)
+            self.assertIn('Colour Classifier v1', html)
+            self.assertIn('Technical version: test-v1', html)
             self.assertIn('Analysed 20', html)
         site_page = self.client.get('/sites/1').get_data(as_text=True)
-        self.assertIn(survey['survey_code'], site_page)
+        self.assertIn(display_code, site_page)
 
     def test_results_page_filters_by_site_and_counts_failures(self):
         self.post()

@@ -102,7 +102,14 @@
                 <span class="compare-arrow" aria-hidden="true"><span>→</span></span>
                 <div>{% if task.after %}<span class="compare-class-chip"><i class="site-dot" style="{{ class_style(task.after) }}"></i>{{ task.after }}</span>{% else %}<span class="muted">—</span>{% endif %}{% if task.after_conf is not none %}<small>{{ '%.0f'|format(task.after_conf * 100) }}% confidence</small>{% endif %}</div>
             </div>
-            {% if task.before_models or task.after_models %}<p class="results-model muted">Model {% for v in task.before_models %}<code title="{{ v }}">{{ v if v|length <= 20 else v[:20] ~ '…' }}</code>{% endfor %}{% if task.model_changed %} → {% for v in task.after_models %}<code title="{{ v }}">{{ v if v|length <= 20 else v[:20] ~ '…' }}</code>{% endfor %}{% endif %}</p>{% endif %}
+            {% if task.before_models or task.after_models %}
+            <p class="results-model muted">
+                Model
+                <span title="Before: {{ task.before_models|join(', ') }}{% if task.model_changed %}; after: {{ task.after_models|join(', ') }}{% endif %}">
+                    {{ display_model_name(task.name) }}
+                </span>
+            </p>
+            {% endif %}
         </div>
     {% endfor %}
     </div>
