@@ -56,7 +56,7 @@
 <section class="dash-section">
     <div class="dash-section-head">
         <h2>Colour class mix</h2>
-        <span class="dash-note">{{ class_total }} completed classification{{ '' if class_total == 1 else 's' }} · model classes, not validated species</span>
+        <span class="dash-note">{{ class_total }} completed image classification{{ '' if class_total == 1 else 's' }} · model classes, not validated species</span>
     </div>
     {% if class_total %}
         <div class="dash-mix">
@@ -91,19 +91,26 @@
                 </span>
                 <span class="dash-spread-wrap">
                     {% if probs %}
+                        {% set class_order = ['orange', 'red', 'yellow'] %}
                         <span class="dash-spread">
-                            {% for label, p in probs | dictsort(by='value', reverse=true) %}
-                                <i style="flex: {{ (p|float * 1000)|round|int }}; {{ class_style(label) }}"></i>
+                            {% for label in class_order %}
+                                {% set probability = probs.get(label, 0) %}
+                                <i style="flex: {{ (probability|float * 1000)|round|int }}; {{ class_style(label) }}"></i>
                             {% endfor %}
                         </span>
-                        <small class="dash-spread-cap">{% for label, p in probs | dictsort(by='value', reverse=true) %}{{ (p|float * 100)|round|int }}{{ ' / ' if not loop.last }}{% endfor %}</small>
+                        <small class="dash-spread-cap">
+                            {% for label in class_order %}
+                                {% set probability = probs.get(label, 0) %}
+                                {{ label|capitalize }} {{ (probability|float * 100)|round|int }}%{{ ' · ' if not loop.last }}
+                            {% endfor %}
+                        </small>
                     {% endif %}
                 </span>
                 <span class="dash-call">
                     {% if survey.predicted_species %}
                         <span class="dash-chip"><i style="{{ class_style(survey.predicted_species) }}"></i>{{ survey.predicted_species|capitalize }}</span>
                         {% if survey.species_confidence is not none %}
-                            <span class="dash-conf">{{ '%.2f'|format(survey.species_confidence|float) }}</span>
+                            <span class="dash-conf">{{ '%.0f%% confidence'|format((survey.species_confidence|float) * 100) }}</span>
                         {% endif %}
                     {% else %}
                         <span class="dash-conf">—</span>

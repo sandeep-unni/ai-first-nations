@@ -413,7 +413,24 @@ class PostgresStore:
             surveys_this_month = cur.fetchone()['count']
             cur.execute("select count(*) as count from survey where status = 'completed'")
             completed_surveys = cur.fetchone()['count']
-            cur.execute("select predicted_class, count(*) as count from analysis_result where analysis_type = 'species_classification' and status = 'completed' group by predicted_class")
+            cur.execute("""
+                with latest as (
+                    select distinct on (image_id)
+                        image_id,
+                        predicted_class
+                    from analysis_result
+                    where analysis_type = 'species_classification'
+                    and status = 'completed'
+                    order by
+                        image_id,
+                        processed_at desc nulls last,
+                        analysis_id desc
+                )
+                select predicted_class, count(*) as count
+                from latest
+                where predicted_class is not null
+                group by predicted_class
+            """)
             species_counts = {row['predicted_class']: row['count'] for row in cur.fetchall() if row['predicted_class']}
         return {'total_sites': total_sites, 'total_surveys': total_surveys, 'surveys_this_month': surveys_this_month, 'completed_surveys': completed_surveys, 'species_counts': species_counts}
 
@@ -429,14 +446,52 @@ class PostgresStore:
             rows = [dict(row) for row in cur.fetchall()]
         for row in rows:
             row['mangrove_detected'] = row.pop('binary_class', None) == 'Mangrove'
-            row['probabilities'] = self._probabilities_for_survey(row['survey_id'])
+
+            probabilities = self._probabilities_for_survey(row['survey_id'])
+            row['probabilities'] = probabilities
+
+            if probabilities:
+                predicted_class, confidence = max(
+                    probabilities.items(),
+                    key=lambda item: item[1],
+                )
+                row['predicted_species'] = predicted_class
+                row['species_confidence'] = confidence
+            else:
+                row['predicted_species'] = None
+                row['species_confidence'] = None
         return rows
 
     def _probabilities_for_survey(self, survey_id):
-        query = "\n            select cp.class_label, cp.probability\n            from class_probability cp\n            join analysis_result ar on ar.analysis_id = cp.analysis_id\n            join image i on i.image_id = ar.image_id\n            where i.survey_id = %s and ar.analysis_type = 'species_classification'\n            order by cp.class_label\n        "
+        query = """
+            with latest as (
+                select distinct on (ar.image_id)
+                    ar.analysis_id
+                from analysis_result ar
+                join image i on i.image_id = ar.image_id
+                where i.survey_id = %s
+                and ar.analysis_type = 'species_classification'
+                and ar.status = 'completed'
+                order by
+                    ar.image_id,
+                    ar.processed_at desc nulls last,
+                    ar.analysis_id desc
+            )
+            select
+                cp.class_label,
+                avg(cp.probability) as probability
+            from latest
+            join class_probability cp
+            on cp.analysis_id = latest.analysis_id
+            group by cp.class_label
+            order by cp.class_label
+        """
         with self._connect() as conn, conn.cursor() as cur:
             cur.execute(query, (survey_id,))
-            return {row['class_label']: float(row['probability']) for row in cur.fetchall()}
+            return {
+                row['class_label']: float(row['probability'])
+                for row in cur.fetchall()
+            }
 
     def delete_survey(self, survey_id):
         with self._connect() as conn:
