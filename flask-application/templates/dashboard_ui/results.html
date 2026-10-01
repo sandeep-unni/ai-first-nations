@@ -40,17 +40,17 @@
         <div class="card-head"><h3>Model outputs</h3><span class="muted">per image</span></div>
         {% for name, task in overall.tasks|dictsort %}
         <div class="results-task">
-            <div class="results-task-head"><strong>{{ status_label(name) }}</strong><span class="muted">{% if task.mean_confidence is not none %}mean confidence {{ '%.0f'|format(task.mean_confidence * 100) }}%{% endif %}</span></div>
+            <div class="results-task-head"><strong>{{ status_label(name) }}</strong><span class="muted">{% if task.mean_confidence is not none %}Mean confidence: {{ '%.0f'|format(task.mean_confidence * 100) }}%{% endif %}</span></div>
             {% if task.rows %}<div class="site-mix-bar" role="img" aria-label="{% for row in task.rows %}{{ row.label }} {{ row.count }}{{ ', ' if not loop.last }}{% endfor %}">{% for row in task.rows %}<span style="width: {{ '%.2f'|format(row.percent) }}%; {{ class_style(row.label) }}"></span>{% endfor %}</div>
-            <p class="site-mix-legend">{% for row in task.rows %}<span><i class="site-dot" style="{{ class_style(row.label) }}"></i>{{ row.label }} {{ row.count }}</span>{% endfor %}</p>{% endif %}
-            <p class="muted">{% for status, count in task.statuses|dictsort %}{{ status_label(status) }} {{ count }}{{ ' · ' if not loop.last }}{% endfor %}</p>
+            <p class="site-mix-legend">{% for row in task.rows %}<span><i class="site-dot" style="{{ class_style(row.label) }}"></i>{{ row.label|capitalize }} {{ row.count }}</span>{% endfor %}</p>{% endif %}
+            <p class="muted">{% for status, count in task.statuses|dictsort %}{{ count }} {{ status_label(status)|lower }}{{ ' · ' if not loop.last }}{% endfor %}</p>
         </div>
         {% endfor %}
     </section>
 </div>
 
 <section class="card">
-    <div class="card-head"><h3>Results by survey</h3><span class="muted">latest first</span></div>
+    <div class="card-head"><h3>Results by survey</h3><span class="muted">Newest first</span></div>
     <div class="results-list">
     {% for survey in surveys %}{% set summary = survey.summary %}{% set mix = summary.composition %}
     <article class="results-survey">
@@ -62,21 +62,21 @@
             <div class="results-survey-head">
                 <div>
                     <h4><a href="{{ url_for('survey_detail', survey_id=survey.survey_id) }}">{{ survey.survey_name or display_survey_code(survey.survey_id) }}</a></h4>
-                    <p class="results-id">Survey ID <code>{{ display_survey_code(survey.survey_id) }}</code></p>
+                    <p class="results-id">Survey ID: <code>{{ display_survey_code(survey.survey_id) }}</code></p>
                 </div>
                 <span class="status">{{ status_label(survey.status) }}</span>
             </div>
             <p class="muted">{{ survey.site_name }} · {{ survey.survey_date }} · {{ summary.analysed }} / {{ survey.image_count }} image{{ '' if survey.image_count == 1 else 's' }} analysed{% if summary.failed %} · <span class="results-alert">{{ summary.failed }} failed</span>{% endif %}</p>
-            {% if mix.mangrove_tiles %}<div class="results-mini"><div class="site-mix-bar">{% for row in mix.rows if row.tiles %}<span style="width: {{ '%.2f'|format(row.percent) }}%; {{ class_style(row.label) }}"></span>{% endfor %}</div><span>{{ '%.0f'|format(mix.mangrove_percent) }}% mangrove tiles</span></div>
+            {% if mix.mangrove_tiles %}<div class="results-mini"><div class="site-mix-bar">{% for row in mix.rows if row.tiles %}<span style="width: {{ '%.2f'|format(row.percent) }}%; {{ class_style(row.label) }}"></span>{% endfor %}</div><span>{{ '%.0f'|format(mix.mangrove_percent) }}% of tiles classified as mangrove</span></div>
             {% elif mix.total_tiles %}<p class="muted">No mangrove in {{ mix.total_tiles }} tiles</p>{% endif %}
             {% if summary.tasks %}<dl class="results-outputs">
             {% for name, task in summary.tasks|dictsort %}<div>
                 <dt>{{ status_label(name) }}</dt>
-                <dd>{% if task.rows %}<i class="site-dot" style="{{ class_style(task.rows[0].label) }}"></i>{{ task.rows[0].label }}{% if task.rows|length > 1 %} <span class="muted">(+{{ task.rows|length - 1 }} other)</span>{% endif %}{% else %}{% for status, count in task.statuses|dictsort %}{{ status_label(status) }} {{ count }}{{ ' · ' if not loop.last }}{% endfor %}{% endif %}
+                <dd>{% if task.rows %}<i class="site-dot" style="{{ class_style(task.rows[0].label) }}"></i>{{ task.rows[0].label|capitalize }}{% if task.rows|length > 1 %} <span class="muted">(+{{ task.rows|length - 1 }} other)</span>{% endif %}{% else %}{% for status, count in task.statuses|dictsort %}{{ count }} {{ status_label(status)|lower }}{{ ' · ' if not loop.last }}{% endfor %}{% endif %}
                     {% if task.mean_confidence is not none %}<span class="muted"> · {{ '%.0f'|format(task.mean_confidence * 100) }}% confidence</span>{% endif %}</dd>
                 {% if task.models %}
                 <dd class="results-model">
-                    Model
+                    Model:
                     <span title="Technical version: {{ task.models|join(', ') }}">
                         {{ display_model_name(name) }}
                     </span>

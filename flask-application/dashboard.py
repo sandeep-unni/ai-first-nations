@@ -101,7 +101,14 @@ def install_dashboard(app, store=None):
         return style
 
     def status_label(status):
-        return str(status).replace("_", " ").capitalize() if status else ""
+        labels = {
+            "binary_detection": "Mangrove detection",
+            "species_classification": "Colour classification",
+        }
+        return labels.get(
+            status,
+            str(status).replace("_", " ").capitalize() if status else "",
+        )
 
     @app.template_global()
     def display_model_name(analysis_type):

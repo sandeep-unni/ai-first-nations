@@ -20,7 +20,7 @@
 <div class="page-actions">
     <div>
         <h2>Mangrove Survey Dashboard</h2>
-        <p>Monitor mangrove sites and track survey results over time simply by creating a survey.</p>
+        <p>Monitor mangrove sites and track survey results over time.</p>
     </div>
     <a class="btn primary" href="{{ url_for('survey_step_1') }}">Create Survey</a>
 </div>
@@ -36,13 +36,13 @@
     <div class="dash-kpi">
         <span class="dash-kpi-key">Surveys</span>
         <strong class="dash-kpi-num">{{ summary.total_surveys }}</strong>
-        <span class="dash-kpi-sub">all records</span>
+        <span class="dash-kpi-sub">total surveys</span>
         <span class="dash-kpi-tick" style="background: #f05424;"></span>
     </div>
     <div class="dash-kpi {% if not summary.surveys_this_month %}is-zero{% endif %}">
         <span class="dash-kpi-key">This month</span>
         <strong class="dash-kpi-num">{{ summary.surveys_this_month }}</strong>
-        <span class="dash-kpi-sub">{{ 'no surveys yet this month' if not summary.surveys_this_month else 'new surveys' }}</span>
+        <span class="dash-kpi-sub">surveys this month</span>
         <span class="dash-kpi-tick" style="background: {{ '#e5d8be' if not summary.surveys_this_month else '#3f7a22' }};"></span>
     </div>
     <div class="dash-kpi">
