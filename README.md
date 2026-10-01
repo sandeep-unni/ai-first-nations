@@ -147,3 +147,11 @@ Tests cover site/survey transaction rollback, original files and metadata,
 duplicate submissions, processing, probabilities, skipped classification,
 failures/retries, resumed processing and exclusive queue consumption. Integration
 tests create and remove isolated schemas; never set TEST_DATABASE_URL to Railway.
+
+## Contributors
+
+This platform extends the AI First Nations mangrove analysis application built by
+Kirtan Shah (s4108558), Thomas Blanks (s4094959) and Jake Dyl (s4092833).
+
+Current team: Justin Nguyen, Daniel Monnito, Sandeep Unni,
+Sanny Un Sowadh Wamik, Imath Wickramarachchi.
